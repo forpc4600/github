@@ -27,8 +27,7 @@ import Dashboard from './components/ERPModules/Dashboard';
 import Customers from './components/ERPModules/Customers';
 import Products from './components/ERPModules/Products';
 import Invoices from './components/ERPModules/Invoices';
-import DeliveryChallanPanel from './components/ERPModules/DeliveryChallan';
-import FastInvoicePanel from './components/ERPModules/FastInvoice';
+import DC from './components/ERPModules/DC';
 import InvoicePanel from './components/ERPModules/InvoicePanel';
 
 // Placeholder components for remaining modules
@@ -84,9 +83,8 @@ export default function ERPApp() {
 
   const modules = [
     { name: 'Dashboard', icon: <Home className="w-5 h-5" />, component: Dashboard },
-    { name: 'Delivery Challan', icon: <Truck className="w-5 h-5" />, component: DeliveryChallanPanel },
+    { name: 'DC', icon: <Truck className="w-5 h-5" />, component: DC },
     { name: 'Invoice Panel', icon: <FileText className="w-5 h-5" />, component: InvoicePanel },
-    { name: 'Fast Invoice', icon: <Zap className="w-5 h-5" />, component: FastInvoicePanel },
     { name: 'Customer Ledger', icon: <BookOpen className="w-5 h-5" />, component: LedgerPanel },
     { name: 'Profit & Loss', icon: <TrendingUp className="w-5 h-5" />, component: ProfitLossPanel },
     { name: 'Cash Flow', icon: <Wallet className="w-5 h-5" />, component: CashFlowPanel },
@@ -126,7 +124,7 @@ export default function ERPApp() {
 
           {/* Center - Navigation Tabs */}
           <nav className="hidden md:flex items-center gap-2 bg-[#1a1a1a]/50 backdrop-blur-lg rounded-2xl p-2 shadow-[inset_4px_4px_8px_#0f0f0f,inset_-4px_-4px_8px_#2a2a2a]">
-            {['Dashboard', 'Delivery Challan', 'Invoice Panel', 'Fast Invoice'].map((tab) => (
+            {['Dashboard', 'DC', 'Invoice Panel'].map((tab) => (
               <button
                 key={tab}
                 onClick={() => setActiveModule(tab)}
