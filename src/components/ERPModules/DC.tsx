@@ -73,6 +73,12 @@ export default function DC() {
 
   useEffect(() => {
     loadData();
+    // Start auto-save
+    dataService.startAutoSave(loadData, 5);
+    
+    return () => {
+      dataService.stopAutoSave();
+    };
     
     // Start auto-save
     dataService.startAutoSave(() => {
@@ -266,6 +272,8 @@ export default function DC() {
     const hasDuplicate = await checkForDuplicateDate(currentDC.date);
     if (hasDuplicate && !duplicateAction) {
       return; // Wait for user decision
+        vendorName: selectedVendor.name,
+        purchaseRate,
     }
 
     try {
@@ -1148,7 +1156,7 @@ export default function DC() {
       {/* DC History */}
       <div className="bg-[#2a2a2a] rounded-2xl shadow-[8px_8px_16px_#0f0f0f,-8px_-8px_16px_#3a3a3a] overflow-hidden">
         <div className="p-6 border-b border-gray-700">
-          <h3 className="text-xl font-semibold text-white">Recent Delivery Challans</h3>
+          <h3 className="text-xl font-semibold text-white">Recent Delivery Challans ({deliveryChallans.length})</h3>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full">
@@ -1157,14 +1165,17 @@ export default function DC() {
                 <th className="px-6 py-4 text-left text-sm font-medium text-gray-400">DC Number</th>
                 <th className="px-6 py-4 text-left text-sm font-medium text-gray-400">Date</th>
                 <th className="px-6 py-4 text-left text-sm font-medium text-gray-400">Vendor</th>
+                <th className="px-6 py-4 text-left text-sm font-medium text-gray-400">Vendor</th>
                 <th className="px-6 py-4 text-left text-sm font-medium text-gray-400">Weight</th>
+                <th className="px-6 py-4 text-left text-sm font-medium text-gray-400">Rate</th>
+                <th className="px-6 py-4 text-left text-sm font-medium text-gray-400">Amount</th>
                 <th className="px-6 py-4 text-left text-sm font-medium text-gray-400">Amount</th>
                 <th className="px-6 py-4 text-left text-sm font-medium text-gray-400">Status</th>
                 <th className="px-6 py-4 text-left text-sm font-medium text-gray-400">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-700">
-              {deliveryChallans.slice(0, 10).map((dc, index) => (
+              {deliveryChallans.slice(0, 30).map((dc, index) => (
                 <motion.tr
                   key={dc.id}
                   initial={{ opacity: 0, y: 20 }}
@@ -1179,10 +1190,19 @@ export default function DC() {
                     <p className="text-gray-300">{dc.date.toLocaleDateString()}</p>
                   </td>
                   <td className="px-6 py-4">
+                    <p className="text-white">{dc.vendorName}</p>
+                  </td>
+                  <td className="px-6 py-4">
                     <p className="text-white">{(dc as any).vendorName || 'N/A'}</p>
                   </td>
                   <td className="px-6 py-4">
                     <p className="text-white">{dc.totalWeight.toFixed(2)} kg</p>
+                  </td>
+                  <td className="px-6 py-4">
+                    <p className="text-green-400">₹{dc.purchaseRate}/kg</p>
+                  </td>
+                  <td className="px-6 py-4">
+                    <p className="text-green-400 font-medium">₹{(dc.totalWeight * dc.purchaseRate).toFixed(2)}</p>
                   </td>
                   <td className="px-6 py-4">
                     <p className="text-green-400">₹{((dc as any).totalAmount || 0).toFixed(2)}</p>
@@ -1210,6 +1230,12 @@ export default function DC() {
               ))}
             </tbody>
           </table>
+          
+          {deliveryChallans.length === 0 && (
+            <div className="p-8 text-center">
+              <p className="text-gray-400">No delivery challans found. Create your first DC above.</p>
+            </div>
+          )}
         </div>
       </div>
     </div>

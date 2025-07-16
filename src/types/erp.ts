@@ -3,6 +3,8 @@ export interface DeliveryChallan {
   id: string;
   dcNumber: string;
   date: Date;
+  vendorName: string;
+  purchaseRate: number;
   cages: Cage[];
   totalBirds: number;
   totalWeight: number;
@@ -80,7 +82,7 @@ export interface LedgerEntry {
   id: string;
   customerId: string;
   customerName: string;
-  type: 'invoice' | 'payment' | 'advance' | 'adjustment';
+  type: 'invoice' | 'payment' | 'advance' | 'adjustment' | 'purchase';
   amount: number;
   balance: number;
   description: string;

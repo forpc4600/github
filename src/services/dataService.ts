@@ -118,7 +118,7 @@ class DataService {
   // DELIVERY CHALLAN OPERATIONS
   async getDeliveryChallans(): Promise<DeliveryChallan[]> {
     const data = this.loadData();
-    return data.deliveryChallans || [];
+    return (data.deliveryChallans || []).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   }
 
   async createDeliveryChallan(dc: Omit<DeliveryChallan, 'id' | 'createdAt' | 'updatedAt'>): Promise<DeliveryChallan> {
@@ -132,6 +132,19 @@ class DataService {
     
     data.deliveryChallans.push(newDC);
     this.saveData(data);
+    
+    // Create ledger entry for vendor
+    await this.createLedgerEntry({
+      customerId: newDC.vendorName, // Using vendor name as ID for now
+      customerName: newDC.vendorName,
+      type: 'purchase',
+      amount: newDC.totalWeight * newDC.purchaseRate,
+      balance: 0, // Will be calculated
+      description: `DC ${newDC.dcNumber} - ${newDC.totalBirds} birds, ${newDC.totalWeight}kg`,
+      referenceId: newDC.id,
+      date: newDC.date
+    });
+    
     return newDC;
   }
 
