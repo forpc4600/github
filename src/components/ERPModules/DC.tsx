@@ -14,7 +14,9 @@ import {
   Zap,
   Users,
   Download,
-  AlertTriangle
+  AlertTriangle,
+  Search,
+  User
 } from 'lucide-react';
 import { dataService } from '../../services/dataService';
 import { DeliveryChallan, Cage, Customer, BulkData } from '../../types/erp';
@@ -26,18 +28,38 @@ interface GroupedData {
   vendorPrice: number;
 }
 
+interface Vendor {
+  id: string;
+  name: string;
+  totalPurchases: number;
+  lastPurchaseDate: Date;
+  averageRate: number;
+}
+
 export default function DC() {
   const [deliveryChallans, setDeliveryChallans] = useState<DeliveryChallan[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
+  const [vendors, setVendors] = useState<Vendor[]>([]);
   const [currentDC, setCurrentDC] = useState<Partial<DeliveryChallan>>({
     dcNumber: '',
     date: new Date(),
     cages: [],
     totalBirds: 0,
     totalWeight: 0,
-    manualWeighing: false,
     confirmed: false
   });
+  
+  // New DC Entry States
+  const [selectedVendor, setSelectedVendor] = useState<Vendor | null>(null);
+  const [vendorSearch, setVendorSearch] = useState('');
+  const [purchaseAmount, setPurchaseAmount] = useState<number>(0);
+  const [showVendorDropdown, setShowVendorDropdown] = useState(false);
+  const [showNewVendorForm, setShowNewVendorForm] = useState(false);
+  const [newVendorName, setNewVendorName] = useState('');
+  const [duplicateAction, setDuplicateAction] = useState<'save-as-2' | 'overwrite' | null>(null);
+  const [showDuplicateDialog, setShowDuplicateDialog] = useState(false);
+  const [existingDC, setExistingDC] = useState<DeliveryChallan | null>(null);
+  const [showSummary, setShowSummary] = useState(false);
   
   // Fast Invoice States
   const [bulkText, setBulkText] = useState('');
@@ -71,6 +93,14 @@ export default function DC() {
     ]);
     setDeliveryChallans(dcs);
     setCustomers(customerList);
+    
+    // Load vendors from ledger or create mock data
+    const mockVendors: Vendor[] = [
+      { id: '1', name: 'Poultry Farm A', totalPurchases: 150000, lastPurchaseDate: new Date(), averageRate: 85.50 },
+      { id: '2', name: 'Chicken Supplier B', totalPurchases: 200000, lastPurchaseDate: new Date(), averageRate: 87.25 },
+      { id: '3', name: 'Farm Fresh Ltd', totalPurchases: 120000, lastPurchaseDate: new Date(), averageRate: 84.75 }
+    ];
+    setVendors(mockVendors);
   };
 
   const handleAutoSave = async () => {
@@ -87,6 +117,36 @@ export default function DC() {
     return { totalBirds, totalWeight };
   };
 
+  // Vendor Selection Functions
+  const filteredVendors = vendors.filter(vendor =>
+    vendor.name.toLowerCase().includes(vendorSearch.toLowerCase())
+  );
+
+  const selectVendor = (vendor: Vendor) => {
+    setSelectedVendor(vendor);
+    setVendorSearch(vendor.name);
+    setShowVendorDropdown(false);
+  };
+
+  const addNewVendor = async () => {
+    if (!newVendorName.trim()) return;
+    
+    const newVendor: Vendor = {
+      id: Date.now().toString(),
+      name: newVendorName.trim(),
+      totalPurchases: 0,
+      lastPurchaseDate: new Date(),
+      averageRate: 0
+    };
+    
+    setVendors([...vendors, newVendor]);
+    setSelectedVendor(newVendor);
+    setVendorSearch(newVendor.name);
+    setNewVendorName('');
+    setShowNewVendorForm(false);
+    setShowVendorDropdown(false);
+  };
+
   // DC Functions
   const handleBulkPaste = () => {
     const parsed = dataService.parseBulkData(bulkText);
@@ -95,7 +155,7 @@ export default function DC() {
       cageNo: cage.cageNo,
       birdCount: cage.birdCount,
       weight: cage.weight,
-      sellingRate: 0,
+      sellingRate: 0, // Removed selling rate
       isBilled: false,
       dcId: currentDC.id || ''
     }));
@@ -168,25 +228,99 @@ export default function DC() {
     });
   };
 
+  // Check for duplicate DC
+  const checkForDuplicateDate = async (date: Date) => {
+    const existingDCs = await dataService.getDeliveryChallans();
+    const dateStr = date.toDateString();
+    const existing = existingDCs.find(dc => dc.date.toDateString() === dateStr);
+    
+    if (existing) {
+      setExistingDC(existing);
+      setShowDuplicateDialog(true);
+      return true;
+    }
+    return false;
+  };
+
+  // Calculate automatic total
+  const calculateAutomaticTotal = () => {
+    if (!currentDC.totalWeight || !purchaseAmount) return 0;
+    return currentDC.totalWeight * (purchaseAmount / currentDC.totalWeight);
+  };
+
+  const showSummaryDialog = () => {
+    if (!selectedVendor || !currentDC.date || !purchaseAmount || !currentDC.cages || currentDC.cages.length === 0) {
+      alert('Please fill all mandatory fields: Date, Vendor Name, Purchase Amount, and add at least one cage');
+      return;
+    }
+    setShowSummary(true);
+  };
+
   const saveDC = async () => {
-    if (!currentDC.dcNumber || !currentDC.cages || currentDC.cages.length === 0) {
-      alert('Please fill DC number and add at least one cage');
+    if (!selectedVendor || !currentDC.date || !purchaseAmount) {
+      alert('Please fill all mandatory fields');
       return;
     }
 
+    // Check for duplicate date
+    const hasDuplicate = await checkForDuplicateDate(currentDC.date);
+    if (hasDuplicate && !duplicateAction) {
+      return; // Wait for user decision
+    }
+
     try {
-      if (currentDC.id) {
-        await dataService.updateDeliveryChallan(currentDC.id, currentDC as DeliveryChallan);
+      let dcNumber = `DC${Date.now()}`;
+      
+      if (duplicateAction === 'save-as-2') {
+        dcNumber = `${existingDC?.dcNumber}-2` || `DC${Date.now()}-2`;
+      } else if (duplicateAction === 'overwrite' && existingDC) {
+        await dataService.deleteDeliveryChallan(existingDC.id);
+        dcNumber = existingDC.dcNumber;
+      }
+
+      const dcData = {
+        ...currentDC,
+        dcNumber,
+        vendorId: selectedVendor.id,
+        vendorName: selectedVendor.name,
+        purchaseAmount,
+        totalAmount: calculateAutomaticTotal()
+      };
+
+      if (currentDC.id && duplicateAction !== 'overwrite') {
+        await dataService.updateDeliveryChallan(currentDC.id, dcData as DeliveryChallan);
       } else {
-        const newDC = await dataService.createDeliveryChallan(currentDC as Omit<DeliveryChallan, 'id' | 'createdAt' | 'updatedAt'>);
+        const newDC = await dataService.createDeliveryChallan(dcData as Omit<DeliveryChallan, 'id' | 'createdAt' | 'updatedAt'>);
         setCurrentDC(newDC);
       }
+
+      // Update vendor ledger
+      await updateVendorLedger();
       
       await loadData();
-      alert('DC saved successfully!');
+      setShowSummary(false);
+      setShowDuplicateDialog(false);
+      setDuplicateAction(null);
+      alert('DC saved successfully and vendor ledger updated!');
     } catch (error) {
       alert('Error saving DC: ' + error);
     }
+  };
+
+  const updateVendorLedger = async () => {
+    if (!selectedVendor) return;
+    
+    // Create ledger entry for vendor
+    await dataService.createLedgerEntry({
+      customerId: selectedVendor.id,
+      customerName: selectedVendor.name,
+      type: 'invoice', // Purchase from vendor perspective
+      amount: purchaseAmount,
+      balance: 0,
+      description: `DC ${currentDC.dcNumber} - ${currentDC.totalWeight}kg`,
+      referenceId: currentDC.id,
+      date: currentDC.date || new Date()
+    });
   };
 
   const confirmDC = async () => {
@@ -201,17 +335,20 @@ export default function DC() {
 
   const newDC = () => {
     setCurrentDC({
-      dcNumber: `DC${Date.now()}`,
+      dcNumber: '',
       date: new Date(),
       cages: [],
       totalBirds: 0,
       totalWeight: 0,
-      manualWeighing: false,
       confirmed: false
     });
+    setSelectedVendor(null);
+    setVendorSearch('');
+    setPurchaseAmount(0);
+    setDuplicateAction(null);
   };
 
-  // Fast Invoice Functions
+  // Fast Invoice Functions (unchanged)
   const parseBulkDCData = () => {
     const lines = bulkText.trim().split('\n');
     const grouped: { [key: string]: BulkData['cages'] } = {};
@@ -221,7 +358,6 @@ export default function DC() {
       const trimmed = line.trim();
       if (!trimmed) continue;
 
-      // Check if line is customer name (contains letters, no numbers at start)
       if (!/^\d/.test(trimmed) && /[a-zA-Z]/.test(trimmed) && trimmed.length > 2) {
         currentCustomer = trimmed;
         if (!grouped[currentCustomer]) {
@@ -230,7 +366,6 @@ export default function DC() {
         continue;
       }
 
-      // Parse cage data: cageNo birdCount weight
       const parts = trimmed.split(/\s+/);
       if (parts.length >= 3 && currentCustomer) {
         const cageNo = parseInt(parts[0]);
@@ -243,7 +378,6 @@ export default function DC() {
       }
     }
 
-    // Convert to GroupedData format
     const groupedArray: GroupedData[] = Object.entries(grouped).map(([customerName, cages]) => ({
       customerName,
       cages,
@@ -271,7 +405,6 @@ export default function DC() {
           continue;
         }
 
-        // Find or create customer
         let customer = customers.find(c => 
           c.name.toLowerCase().includes(group.customerName.toLowerCase()) ||
           group.customerName.toLowerCase().includes(c.name.toLowerCase())
@@ -291,14 +424,12 @@ export default function DC() {
           setResults(prev => [...prev, `✅ Created new customer: ${customer!.name}`]);
         }
 
-        // Calculate totals
         const totalBirds = group.cages.reduce((sum, cage) => sum + cage.birdCount, 0);
         const totalWeight = group.cages.reduce((sum, cage) => sum + cage.weight, 0);
         const subtotal = totalWeight * group.rate;
-        const tax = subtotal * 0.18; // 18% GST
+        const tax = subtotal * 0.18;
         const total = subtotal + tax;
 
-        // Create invoice
         const invoice = {
           invoiceNumber: `FI${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
           customerId: customer.id,
@@ -321,12 +452,11 @@ export default function DC() {
           version: '1.0',
           weightLoss: 0,
           additionalCharges: 0,
-          dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 days
+          dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
         };
 
         const createdInvoice = await dataService.createInvoice(invoice);
         
-        // Generate PDF (placeholder)
         const filename = `I${createdInvoice.version}_${customer.name.replace(/\s+/g, '_')}_${new Date().toLocaleDateString('en-GB').replace(/\//g, '-')}_1.pdf`;
         
         setResults(prev => [...prev, `✅ Invoice ${createdInvoice.invoiceNumber} created for ${customer!.name} - ₹${total.toFixed(2)}`]);
@@ -413,39 +543,106 @@ export default function DC() {
           {/* DC Form */}
           <div className="bg-[#2a2a2a] rounded-2xl p-6 shadow-[8px_8px_16px_#0f0f0f,-8px_-8px_16px_#3a3a3a]">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+              {/* Date Field */}
               <div>
-                <label className="block text-gray-400 text-sm font-medium mb-2">DC Number</label>
-                <input
-                  type="text"
-                  value={currentDC.dcNumber || ''}
-                  onChange={(e) => setCurrentDC({ ...currentDC, dcNumber: e.target.value })}
-                  className="w-full px-4 py-3 bg-[#1a1a1a] border border-gray-600 rounded-xl text-white placeholder-gray-400 focus:border-purple-500 focus:outline-none shadow-[inset_2px_2px_4px_#0f0f0f,inset_-2px_-2px_4px_#2a2a2a]"
-                  placeholder="Enter DC number"
-                />
-              </div>
-              
-              <div>
-                <label className="block text-gray-400 text-sm font-medium mb-2">Date</label>
+                <label className="block text-gray-400 text-sm font-medium mb-2">
+                  Date <span className="text-red-400">*</span>
+                </label>
                 <input
                   type="date"
                   value={currentDC.date ? currentDC.date.toISOString().split('T')[0] : ''}
                   onChange={(e) => setCurrentDC({ ...currentDC, date: new Date(e.target.value) })}
                   className="w-full px-4 py-3 bg-[#1a1a1a] border border-gray-600 rounded-xl text-white focus:border-purple-500 focus:outline-none shadow-[inset_2px_2px_4px_#0f0f0f,inset_-2px_-2px_4px_#2a2a2a]"
+                  required
                 />
               </div>
               
-              <div className="flex items-center gap-4">
-                <label className="flex items-center gap-2 text-white">
-                  <input
-                    type="checkbox"
-                    checked={currentDC.manualWeighing || false}
-                    onChange={(e) => setCurrentDC({ ...currentDC, manualWeighing: e.target.checked })}
-                    className="w-4 h-4 text-purple-500 bg-[#1a1a1a] border-gray-600 rounded focus:ring-purple-500"
-                  />
-                  Manual Weighing
+              {/* Vendor Selection */}
+              <div className="relative">
+                <label className="block text-gray-400 text-sm font-medium mb-2">
+                  Vendor Name <span className="text-red-400">*</span>
                 </label>
+                <div className="relative">
+                  <input
+                    type="text"
+                    value={vendorSearch}
+                    onChange={(e) => {
+                      setVendorSearch(e.target.value);
+                      setShowVendorDropdown(true);
+                    }}
+                    onFocus={() => setShowVendorDropdown(true)}
+                    className="w-full px-4 py-3 bg-[#1a1a1a] border border-gray-600 rounded-xl text-white placeholder-gray-400 focus:border-purple-500 focus:outline-none shadow-[inset_2px_2px_4px_#0f0f0f,inset_-2px_-2px_4px_#2a2a2a]"
+                    placeholder="Search or select vendor..."
+                    required
+                  />
+                  <Search className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+                </div>
+                
+                {/* Vendor Dropdown */}
+                {showVendorDropdown && (
+                  <div className="absolute z-10 w-full mt-1 bg-[#1a1a1a] border border-gray-600 rounded-xl shadow-[8px_8px_16px_#0f0f0f,-8px_-8px_16px_#3a3a3a] max-h-48 overflow-y-auto">
+                    {filteredVendors.map(vendor => (
+                      <button
+                        key={vendor.id}
+                        onClick={() => selectVendor(vendor)}
+                        className="w-full text-left px-4 py-3 hover:bg-[#2a2a2a] text-white border-b border-gray-700 last:border-b-0"
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="font-medium">{vendor.name}</span>
+                          <span className="text-gray-400 text-sm">₹{vendor.averageRate}/kg</span>
+                        </div>
+                      </button>
+                    ))}
+                    
+                    {/* Add New Vendor Option */}
+                    <button
+                      onClick={() => {
+                        setShowNewVendorForm(true);
+                        setShowVendorDropdown(false);
+                      }}
+                      className="w-full text-left px-4 py-3 hover:bg-[#2a2a2a] text-green-400 border-t border-gray-700"
+                    >
+                      <div className="flex items-center gap-2">
+                        <Plus className="w-4 h-4" />
+                        Add New Vendor
+                      </div>
+                    </button>
+                  </div>
+                )}
+              </div>
+              
+              {/* Purchase Amount */}
+              <div>
+                <label className="block text-gray-400 text-sm font-medium mb-2">
+                  Purchase Amount (₹/kg) <span className="text-red-400">*</span>
+                </label>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={purchaseAmount}
+                  onChange={(e) => setPurchaseAmount(parseFloat(e.target.value) || 0)}
+                  className="w-full px-4 py-3 bg-[#1a1a1a] border border-gray-600 rounded-xl text-white placeholder-gray-400 focus:border-purple-500 focus:outline-none shadow-[inset_2px_2px_4px_#0f0f0f,inset_-2px_-2px_4px_#2a2a2a]"
+                  placeholder="Enter rate per kg"
+                  required
+                />
               </div>
             </div>
+
+            {/* Selected Vendor Info */}
+            {selectedVendor && (
+              <div className="mb-6 p-4 bg-[#1a1a1a] rounded-xl shadow-[inset_2px_2px_4px_#0f0f0f,inset_-2px_-2px_4px_#2a2a2a]">
+                <div className="flex items-center gap-3">
+                  <User className="w-5 h-5 text-blue-400" />
+                  <div>
+                    <p className="text-white font-medium">{selectedVendor.name}</p>
+                    <p className="text-gray-400 text-sm">
+                      Total Purchases: ₹{selectedVendor.totalPurchases.toLocaleString()} | 
+                      Avg Rate: ₹{selectedVendor.averageRate}/kg
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Bulk Input */}
             <div className="mb-6">
@@ -495,7 +692,7 @@ export default function DC() {
             </div>
 
             {/* Summary Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
               <div className="bg-gradient-to-r from-cyan-400 via-blue-500 to-purple-600 rounded-xl p-4 text-white">
                 <div className="flex items-center gap-2 mb-2">
                   <Calculator className="w-5 h-5" />
@@ -515,9 +712,17 @@ export default function DC() {
               <div className="bg-gradient-to-r from-orange-400 via-red-500 to-pink-600 rounded-xl p-4 text-white">
                 <div className="flex items-center gap-2 mb-2">
                   <FileText className="w-5 h-5" />
-                  <span className="font-medium">Cages</span>
+                  <span className="font-medium">Purchase Rate</span>
                 </div>
-                <p className="text-2xl font-bold">{currentDC.cages?.length || 0}</p>
+                <p className="text-2xl font-bold">₹{purchaseAmount}/kg</p>
+              </div>
+              
+              <div className="bg-gradient-to-r from-green-400 via-emerald-500 to-teal-600 rounded-xl p-4 text-white">
+                <div className="flex items-center gap-2 mb-2">
+                  <Calculator className="w-5 h-5" />
+                  <span className="font-medium">Total Amount</span>
+                </div>
+                <p className="text-2xl font-bold">₹{((currentDC.totalWeight || 0) * purchaseAmount).toFixed(2)}</p>
               </div>
             </div>
 
@@ -531,8 +736,7 @@ export default function DC() {
                         <th className="px-4 py-3 text-left text-sm font-medium text-gray-400">Cage No</th>
                         <th className="px-4 py-3 text-left text-sm font-medium text-gray-400">Bird Count</th>
                         <th className="px-4 py-3 text-left text-sm font-medium text-gray-400">Weight (kg)</th>
-                        <th className="px-4 py-3 text-left text-sm font-medium text-gray-400">Selling Rate</th>
-                        <th className="px-4 py-3 text-left text-sm font-medium text-gray-400">Status</th>
+                        <th className="px-4 py-3 text-left text-sm font-medium text-gray-400">Amount (₹)</th>
                         <th className="px-4 py-3 text-left text-sm font-medium text-gray-400">Actions</th>
                       </tr>
                     </thead>
@@ -571,21 +775,8 @@ export default function DC() {
                             />
                           </td>
                           <td className="px-4 py-3">
-                            <input
-                              type="number"
-                              step="0.01"
-                              value={cage.sellingRate}
-                              onChange={(e) => updateCage(cage.id, 'sellingRate', parseFloat(e.target.value) || 0)}
-                              className="w-24 px-2 py-1 bg-[#0f0f0f] border border-gray-600 rounded text-white text-sm focus:border-purple-500 focus:outline-none"
-                            />
-                          </td>
-                          <td className="px-4 py-3">
-                            <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                              cage.isBilled 
-                                ? 'bg-green-500/20 text-green-400 border border-green-500/30' 
-                                : 'bg-gray-500/20 text-gray-400 border border-gray-500/30'
-                            }`}>
-                              {cage.isBilled ? 'Billed' : 'Available'}
+                            <span className="text-green-400 font-medium">
+                              ₹{(cage.weight * purchaseAmount).toFixed(2)}
                             </span>
                           </td>
                           <td className="px-4 py-3">
@@ -607,7 +798,7 @@ export default function DC() {
             {/* Action Buttons */}
             <div className="flex items-center gap-3 mt-6">
               <button
-                onClick={saveDC}
+                onClick={showSummaryDialog}
                 className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-green-500 to-emerald-500 rounded-xl text-white font-medium shadow-[0_0_20px_rgba(0,255,0,0.3)] hover:shadow-[0_0_30px_rgba(0,255,0,0.5)] transition-all duration-300"
               >
                 <Save className="w-5 h-5" />
@@ -635,7 +826,7 @@ export default function DC() {
         </div>
       )}
 
-      {/* Fast Invoice Tab Content */}
+      {/* Fast Invoice Tab Content (unchanged) */}
       {activeTab === 'fast' && (
         <div className="space-y-6">
           {/* Bulk Input Section */}
@@ -824,6 +1015,136 @@ export default function DC() {
         </div>
       )}
 
+      {/* New Vendor Form Modal */}
+      {showNewVendorForm && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-[#2a2a2a] rounded-2xl p-6 w-full max-w-md shadow-[8px_8px_16px_#0f0f0f,-8px_-8px_16px_#3a3a3a]">
+            <h3 className="text-xl font-semibold text-white mb-4">Add New Vendor</h3>
+            <input
+              type="text"
+              value={newVendorName}
+              onChange={(e) => setNewVendorName(e.target.value)}
+              placeholder="Enter vendor name"
+              className="w-full px-4 py-3 bg-[#1a1a1a] border border-gray-600 rounded-xl text-white placeholder-gray-400 focus:border-purple-500 focus:outline-none mb-4"
+            />
+            <div className="flex gap-3">
+              <button
+                onClick={addNewVendor}
+                className="flex-1 px-4 py-2 bg-gradient-to-r from-green-500 to-emerald-500 rounded-xl text-white font-medium"
+              >
+                Add Vendor
+              </button>
+              <button
+                onClick={() => {
+                  setShowNewVendorForm(false);
+                  setNewVendorName('');
+                }}
+                className="flex-1 px-4 py-2 bg-gray-600 rounded-xl text-white font-medium"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Duplicate Date Dialog */}
+      {showDuplicateDialog && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-[#2a2a2a] rounded-2xl p-6 w-full max-w-md shadow-[8px_8px_16px_#0f0f0f,-8px_-8px_16px_#3a3a3a]">
+            <div className="flex items-center gap-3 mb-4">
+              <AlertTriangle className="w-6 h-6 text-yellow-400" />
+              <h3 className="text-xl font-semibold text-white">DC Already Exists</h3>
+            </div>
+            <p className="text-gray-400 mb-6">
+              DC already exists for {currentDC.date?.toLocaleDateString()}. Would you like to:
+            </p>
+            <div className="space-y-3">
+              <button
+                onClick={() => {
+                  setDuplicateAction('save-as-2');
+                  saveDC();
+                }}
+                className="w-full px-4 py-3 bg-gradient-to-r from-blue-500 to-purple-500 rounded-xl text-white font-medium"
+              >
+                Save as DC-2
+              </button>
+              <button
+                onClick={() => {
+                  setDuplicateAction('overwrite');
+                  saveDC();
+                }}
+                className="w-full px-4 py-3 bg-gradient-to-r from-red-500 to-pink-500 rounded-xl text-white font-medium"
+              >
+                Overwrite Existing DC
+              </button>
+              <button
+                onClick={() => {
+                  setShowDuplicateDialog(false);
+                  setDuplicateAction(null);
+                }}
+                className="w-full px-4 py-3 bg-gray-600 rounded-xl text-white font-medium"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Summary Dialog */}
+      {showSummary && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-[#2a2a2a] rounded-2xl p-6 w-full max-w-lg shadow-[8px_8px_16px_#0f0f0f,-8px_-8px_16px_#3a3a3a]">
+            <h3 className="text-xl font-semibold text-white mb-6">DC Summary</h3>
+            
+            <div className="space-y-4 mb-6">
+              <div className="flex justify-between">
+                <span className="text-gray-400">Date:</span>
+                <span className="text-white">{currentDC.date?.toLocaleDateString()}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-400">Vendor:</span>
+                <span className="text-white">{selectedVendor?.name}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-400">Total Birds:</span>
+                <span className="text-white">{currentDC.totalBirds}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-400">Total Weight:</span>
+                <span className="text-white">{currentDC.totalWeight?.toFixed(2)} kg</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-400">Purchase Rate:</span>
+                <span className="text-white">₹{purchaseAmount}/kg</span>
+              </div>
+              <div className="flex justify-between border-t border-gray-700 pt-4">
+                <span className="text-gray-400 font-medium">Total Amount:</span>
+                <span className="text-green-400 font-bold text-lg">
+                  ₹{((currentDC.totalWeight || 0) * purchaseAmount).toFixed(2)}
+                </span>
+              </div>
+            </div>
+            
+            <div className="flex gap-3">
+              <button
+                onClick={saveDC}
+                className="flex-1 px-6 py-3 bg-gradient-to-r from-green-500 to-emerald-500 rounded-xl text-white font-medium"
+              >
+                Confirm & Save
+              </button>
+              <button
+                onClick={() => setShowSummary(false)}
+                className="flex-1 px-6 py-3 bg-gray-600 rounded-xl text-white font-medium"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* DC History */}
       <div className="bg-[#2a2a2a] rounded-2xl shadow-[8px_8px_16px_#0f0f0f,-8px_-8px_16px_#3a3a3a] overflow-hidden">
         <div className="p-6 border-b border-gray-700">
@@ -835,9 +1156,9 @@ export default function DC() {
               <tr>
                 <th className="px-6 py-4 text-left text-sm font-medium text-gray-400">DC Number</th>
                 <th className="px-6 py-4 text-left text-sm font-medium text-gray-400">Date</th>
-                <th className="px-6 py-4 text-left text-sm font-medium text-gray-400">Cages</th>
-                <th className="px-6 py-4 text-left text-sm font-medium text-gray-400">Total Birds</th>
-                <th className="px-6 py-4 text-left text-sm font-medium text-gray-400">Total Weight</th>
+                <th className="px-6 py-4 text-left text-sm font-medium text-gray-400">Vendor</th>
+                <th className="px-6 py-4 text-left text-sm font-medium text-gray-400">Weight</th>
+                <th className="px-6 py-4 text-left text-sm font-medium text-gray-400">Amount</th>
                 <th className="px-6 py-4 text-left text-sm font-medium text-gray-400">Status</th>
                 <th className="px-6 py-4 text-left text-sm font-medium text-gray-400">Actions</th>
               </tr>
@@ -858,13 +1179,13 @@ export default function DC() {
                     <p className="text-gray-300">{dc.date.toLocaleDateString()}</p>
                   </td>
                   <td className="px-6 py-4">
-                    <p className="text-white">{dc.cages.length}</p>
-                  </td>
-                  <td className="px-6 py-4">
-                    <p className="text-white">{dc.totalBirds}</p>
+                    <p className="text-white">{(dc as any).vendorName || 'N/A'}</p>
                   </td>
                   <td className="px-6 py-4">
                     <p className="text-white">{dc.totalWeight.toFixed(2)} kg</p>
+                  </td>
+                  <td className="px-6 py-4">
+                    <p className="text-green-400">₹{((dc as any).totalAmount || 0).toFixed(2)}</p>
                   </td>
                   <td className="px-6 py-4">
                     <span className={`px-3 py-1 rounded-full text-xs font-medium border ${
