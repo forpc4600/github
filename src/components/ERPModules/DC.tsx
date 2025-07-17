@@ -3,161 +3,106 @@ import { motion } from 'framer-motion';
 import { 
   Truck, 
   Plus, 
-  Upload, 
+  Search, 
   Save, 
-  Check, 
-  Edit, 
-  Trash2,
-  Calculator,
-  FileText,
-  Clock,
-  Zap,
-  Users,
-  Download,
+  Calendar,
+  User,
+  DollarSign,
+  Package,
   AlertTriangle,
-  Search,
-  User
+  CheckCircle,
+  Clock,
+  FileText,
+  Trash2,
+  Edit
 } from 'lucide-react';
 import { dataService } from '../../services/dataService';
-import { DeliveryChallan, Cage, Customer, BulkData } from '../../types/erp';
-
-interface GroupedData {
-  customerName: string;
-  cages: BulkData['cages'];
-  rate: number;
-  vendorPrice: number;
-}
-
-interface Vendor {
-  id: string;
-  name: string;
-  totalPurchases: number;
-  lastPurchaseDate: Date;
-  averageRate: number;
-}
+import { DeliveryChallan, Customer, Cage, BulkData } from '../../types/erp';
 
 export default function DC() {
   const [deliveryChallans, setDeliveryChallans] = useState<DeliveryChallan[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
-  const [vendors, setVendors] = useState<Vendor[]>([]);
   const [currentDC, setCurrentDC] = useState<Partial<DeliveryChallan>>({
     dcNumber: '',
     date: new Date(),
+    vendorName: '',
+    purchaseRate: 0,
     cages: [],
     totalBirds: 0,
     totalWeight: 0,
+    manualWeighing: false,
     confirmed: false
   });
   
-  // New DC Entry States
-  const [selectedVendor, setSelectedVendor] = useState<Vendor | null>(null);
+  const [selectedVendor, setSelectedVendor] = useState<Customer | null>(null);
   const [vendorSearch, setVendorSearch] = useState('');
-  const [purchaseAmount, setPurchaseAmount] = useState<number>(0);
-  const [showVendorDropdown, setShowVendorDropdown] = useState(false);
-  const [showNewVendorForm, setShowNewVendorForm] = useState(false);
-  const [newVendorName, setNewVendorName] = useState('');
+  const [bulkData, setBulkData] = useState('');
+  const [showSummary, setShowSummary] = useState(false);
   const [duplicateAction, setDuplicateAction] = useState<'save-as-2' | 'overwrite' | null>(null);
   const [showDuplicateDialog, setShowDuplicateDialog] = useState(false);
   const [existingDC, setExistingDC] = useState<DeliveryChallan | null>(null);
-  const [showSummary, setShowSummary] = useState(false);
-  
-  // Fast Invoice States
-  const [bulkText, setBulkText] = useState('');
-  const [groupedData, setGroupedData] = useState<GroupedData[]>([]);
-  const [processing, setProcessing] = useState(false);
-  const [results, setResults] = useState<string[]>([]);
-  const [activeTab, setActiveTab] = useState<'dc' | 'fast'>('dc');
-  
-  const [showBulkInput, setShowBulkInput] = useState(false);
-  const [autoSaveStatus, setAutoSaveStatus] = useState('');
 
   useEffect(() => {
     loadData();
-    // Start auto-save
-    dataService.startAutoSave(loadData, 5);
-    
-    return () => {
-      dataService.stopAutoSave();
-    };
-    
-    // Start auto-save
-    dataService.startAutoSave(() => {
+    // Auto-save every 5 minutes
+    const interval = setInterval(() => {
       if (currentDC.cages && currentDC.cages.length > 0) {
-        handleAutoSave();
+        console.log('Auto-saving DC...');
       }
-    }, 5);
+    }, 5 * 60 * 1000);
 
-    return () => {
-      dataService.stopAutoSave();
-    };
+    return () => clearInterval(interval);
   }, []);
 
   const loadData = async () => {
-    const [dcs, customerList] = await Promise.all([
+    const [dcList, customerList] = await Promise.all([
       dataService.getDeliveryChallans(),
       dataService.getCustomers()
     ]);
-    setDeliveryChallans(dcs);
-    setCustomers(customerList);
     
-    // Load vendors from ledger or create mock data
-    const mockVendors: Vendor[] = [
-      { id: '1', name: 'Poultry Farm A', totalPurchases: 150000, lastPurchaseDate: new Date(), averageRate: 85.50 },
-      { id: '2', name: 'Chicken Supplier B', totalPurchases: 200000, lastPurchaseDate: new Date(), averageRate: 87.25 },
-      { id: '3', name: 'Farm Fresh Ltd', totalPurchases: 120000, lastPurchaseDate: new Date(), averageRate: 84.75 }
-    ];
-    setVendors(mockVendors);
+    setDeliveryChallans(dcList);
+    setCustomers(customerList);
   };
 
-  const handleAutoSave = async () => {
-    if (currentDC.id) {
-      await dataService.updateDeliveryChallan(currentDC.id, currentDC as DeliveryChallan);
-      setAutoSaveStatus('Auto-saved at ' + new Date().toLocaleTimeString());
-      setTimeout(() => setAutoSaveStatus(''), 3000);
-    }
-  };
-
-  const calculateTotals = (cages: Cage[]) => {
-    const totalBirds = cages.reduce((sum, cage) => sum + cage.birdCount, 0);
-    const totalWeight = cages.reduce((sum, cage) => sum + cage.weight, 0);
-    return { totalBirds, totalWeight };
-  };
-
-  // Vendor Selection Functions
-  const filteredVendors = vendors.filter(vendor =>
-    vendor.name.toLowerCase().includes(vendorSearch.toLowerCase())
+  const filteredVendors = customers.filter(customer =>
+    customer.name.toLowerCase().includes(vendorSearch.toLowerCase()) ||
+    customer.phone.includes(vendorSearch)
   );
 
-  const selectVendor = (vendor: Vendor) => {
+  const selectVendor = (vendor: Customer) => {
     setSelectedVendor(vendor);
     setVendorSearch(vendor.name);
-    setShowVendorDropdown(false);
+    setCurrentDC({
+      ...currentDC,
+      vendorName: vendor.name
+    });
   };
 
   const addNewVendor = async () => {
-    if (!newVendorName.trim()) return;
+    if (!vendorSearch.trim()) return;
     
-    const newVendor: Vendor = {
-      id: Date.now().toString(),
-      name: newVendorName.trim(),
-      totalPurchases: 0,
-      lastPurchaseDate: new Date(),
-      averageRate: 0
+    const newVendor: Omit<Customer, 'id' | 'createdAt'> = {
+      name: vendorSearch.trim(),
+      email: '',
+      phone: '',
+      address: '',
+      customerType: 'wholesale',
+      defaultRate: currentDC.purchaseRate || 0,
+      balance: 0,
+      advance: 0
     };
     
-    setVendors([...vendors, newVendor]);
-    setSelectedVendor(newVendor);
-    setVendorSearch(newVendor.name);
-    setNewVendorName('');
-    setShowNewVendorForm(false);
-    setShowVendorDropdown(false);
+    const createdVendor = await dataService.createCustomer(newVendor);
+    setCustomers([...customers, createdVendor]);
+    selectVendor(createdVendor);
   };
 
-  // DC Functions
-  const handleBulkPaste = () => {
-    const parsed = dataService.parseBulkData(bulkText);
+  const parseBulkData = () => {
+    if (!bulkData.trim()) return;
+    
+    const parsed = dataService.parseBulkData(bulkData);
     const newCages: Cage[] = parsed.cages.map((cage, index) => ({
-      id: Date.now().toString() + index,
+      id: `cage-${Date.now()}-${index}`,
       cageNo: cage.cageNo,
       birdCount: cage.birdCount,
       weight: cage.weight,
@@ -165,80 +110,54 @@ export default function DC() {
       isBilled: false,
       dcId: currentDC.id || ''
     }));
-
-    const { totalBirds, totalWeight } = calculateTotals(newCages);
     
-    setCurrentDC({
-      ...currentDC,
-      cages: newCages,
-      totalBirds,
-      totalWeight
-    });
-    
-    setBulkText('');
-    setShowBulkInput(false);
+    updateCagesAndTotals(newCages);
+    setBulkData('');
   };
 
-  const addCage = () => {
-    if (currentDC.cages && currentDC.cages.length < 60) {
-      const newCage: Cage = {
-        id: Date.now().toString(),
-        cageNo: currentDC.cages.length + 1,
-        birdCount: 0,
-        weight: 0,
-        sellingRate: 0,
-        isBilled: false,
-        dcId: currentDC.id || ''
-      };
-      
-      const updatedCages = [...currentDC.cages, newCage];
-      const { totalBirds, totalWeight } = calculateTotals(updatedCages);
-      
-      setCurrentDC({
-        ...currentDC,
-        cages: updatedCages,
-        totalBirds,
-        totalWeight
-      });
-    }
+  const addSingleCage = () => {
+    const newCage: Cage = {
+      id: `cage-${Date.now()}`,
+      cageNo: (currentDC.cages?.length || 0) + 1,
+      birdCount: 0,
+      weight: 0,
+      sellingRate: 0, // Removed selling rate
+      isBilled: false,
+      dcId: currentDC.id || ''
+    };
+    
+    const updatedCages = [...(currentDC.cages || []), newCage];
+    updateCagesAndTotals(updatedCages);
   };
 
   const updateCage = (cageId: string, field: keyof Cage, value: number) => {
-    if (!currentDC.cages) return;
-    
-    const updatedCages = currentDC.cages.map(cage =>
+    const updatedCages = (currentDC.cages || []).map(cage =>
       cage.id === cageId ? { ...cage, [field]: value } : cage
     );
-    
-    const { totalBirds, totalWeight } = calculateTotals(updatedCages);
-    
-    setCurrentDC({
-      ...currentDC,
-      cages: updatedCages,
-      totalBirds,
-      totalWeight
-    });
+    updateCagesAndTotals(updatedCages);
   };
 
   const removeCage = (cageId: string) => {
-    if (!currentDC.cages) return;
-    
-    const updatedCages = currentDC.cages.filter(cage => cage.id !== cageId);
-    const { totalBirds, totalWeight } = calculateTotals(updatedCages);
+    const updatedCages = (currentDC.cages || []).filter(cage => cage.id !== cageId);
+    updateCagesAndTotals(updatedCages);
+  };
+
+  const updateCagesAndTotals = (cages: Cage[]) => {
+    const totalBirds = cages.reduce((sum, cage) => sum + cage.birdCount, 0);
+    const totalWeight = cages.reduce((sum, cage) => sum + cage.weight, 0);
     
     setCurrentDC({
       ...currentDC,
-      cages: updatedCages,
+      cages,
       totalBirds,
       totalWeight
     });
   };
 
-  // Check for duplicate DC
   const checkForDuplicateDate = async (date: Date) => {
     const existingDCs = await dataService.getDeliveryChallans();
     const dateStr = date.toDateString();
-    const existing = existingDCs.find(dc => dc.date.toDateString() === dateStr);
+    const existing = existingDCs.find(dc => new Date(dc.date).toDateString() === dateStr);
     
     if (existing) {
       setExistingDC(existing);
@@ -248,23 +167,15 @@ export default function DC() {
     return false;
   };
 
-  // Calculate automatic total
-  const calculateAutomaticTotal = () => {
-    if (!currentDC.totalWeight || !purchaseAmount) return 0;
-    return currentDC.totalWeight * (purchaseAmount / currentDC.totalWeight);
-  };
-
-  const showSummaryDialog = () => {
-    if (!selectedVendor || !currentDC.date || !purchaseAmount || !currentDC.cages || currentDC.cages.length === 0) {
-      alert('Please fill all mandatory fields: Date, Vendor Name, Purchase Amount, and add at least one cage');
+  const handleSave = async () => {
+    // Validation
+    if (!currentDC.date || !currentDC.vendorName || !currentDC.purchaseRate) {
+      alert('Please fill all mandatory fields: Date, Vendor Name, and Purchase Rate');
       return;
     }
-    setShowSummary(true);
-  };
 
-  const saveDC = async () => {
-    if (!selectedVendor || !currentDC.date || !purchaseAmount) {
-      alert('Please fill all mandatory fields');
+    if (!currentDC.cages || currentDC.cages.length === 0) {
+      alert('Please add at least one cage');
       return;
     }
 
@@ -272,217 +183,68 @@ export default function DC() {
     const hasDuplicate = await checkForDuplicateDate(currentDC.date);
     if (hasDuplicate && !duplicateAction) {
       return; // Wait for user decision
-        vendorName: selectedVendor.name,
-        purchaseRate,
+    }
 
+    setShowSummary(true);
+  };
+
+  const confirmSave = async () => {
     try {
       let dcNumber = `DC${Date.now()}`;
       
-      if (duplicateAction === 'save-as-2') {
-        dcNumber = `${existingDC?.dcNumber}-2` || `DC${Date.now()}-2`;
+      // Handle duplicate actions
+      if (duplicateAction === 'save-as-2' && existingDC) {
+        dcNumber = `${existingDC.dcNumber}-2`;
       } else if (duplicateAction === 'overwrite' && existingDC) {
-        await dataService.deleteDeliveryChallan(existingDC.id);
         dcNumber = existingDC.dcNumber;
+        await dataService.deleteDeliveryChallan(existingDC.id);
       }
 
       const dcData = {
-        ...currentDC,
         dcNumber,
-        vendorId: selectedVendor.id,
-        vendorName: selectedVendor.name,
-        purchaseAmount,
-        totalAmount: calculateAutomaticTotal()
+        date: currentDC.date!,
+        vendorName: currentDC.vendorName!,
+        purchaseRate: currentDC.purchaseRate!,
+        cages: currentDC.cages!,
+        totalBirds: currentDC.totalBirds!,
+        totalWeight: currentDC.totalWeight!,
+        manualWeighing: false, // Removed manual weighing
+        confirmed: true
       };
 
-      if (currentDC.id && duplicateAction !== 'overwrite') {
-        await dataService.updateDeliveryChallan(currentDC.id, dcData as DeliveryChallan);
-      } else {
-        const newDC = await dataService.createDeliveryChallan(dcData as Omit<DeliveryChallan, 'id' | 'createdAt' | 'updatedAt'>);
-        setCurrentDC(newDC);
-      }
-
-      // Update vendor ledger
-      await updateVendorLedger();
+      await dataService.createDeliveryChallan(dcData);
+      
+      // Reset form
+      setCurrentDC({
+        dcNumber: '',
+        date: new Date(),
+        vendorName: '',
+        purchaseRate: 0,
+        cages: [],
+        totalBirds: 0,
+        totalWeight: 0,
+        manualWeighing: false,
+        confirmed: false
+      });
+      
+      setSelectedVendor(null);
+      setVendorSearch('');
+      setShowSummary(false);
+      setDuplicateAction(null);
+      setShowDuplicateDialog(false);
+      setExistingDC(null);
       
       await loadData();
-      setShowSummary(false);
-      setShowDuplicateDialog(false);
-      setDuplicateAction(null);
-      alert('DC saved successfully and vendor ledger updated!');
+      alert('DC saved successfully and ledger updated!');
     } catch (error) {
       alert('Error saving DC: ' + error);
     }
   };
 
-  const updateVendorLedger = async () => {
-    if (!selectedVendor) return;
-    
-    // Create ledger entry for vendor
-    await dataService.createLedgerEntry({
-      customerId: selectedVendor.id,
-      customerName: selectedVendor.name,
-      type: 'invoice', // Purchase from vendor perspective
-      amount: purchaseAmount,
-      balance: 0,
-      description: `DC ${currentDC.dcNumber} - ${currentDC.totalWeight}kg`,
-      referenceId: currentDC.id,
-      date: currentDC.date || new Date()
-    });
-  };
-
-  const confirmDC = async () => {
-    if (!currentDC.id) {
-      await saveDC();
-    }
-    
-    await dataService.updateDeliveryChallan(currentDC.id!, { confirmed: true });
-    setCurrentDC({ ...currentDC, confirmed: true });
-    await loadData();
-  };
-
-  const newDC = () => {
-    setCurrentDC({
-      dcNumber: '',
-      date: new Date(),
-      cages: [],
-      totalBirds: 0,
-      totalWeight: 0,
-      confirmed: false
-    });
-    setSelectedVendor(null);
-    setVendorSearch('');
-    setPurchaseAmount(0);
-    setDuplicateAction(null);
-  };
-
-  // Fast Invoice Functions (unchanged)
-  const parseBulkDCData = () => {
-    const lines = bulkText.trim().split('\n');
-    const grouped: { [key: string]: BulkData['cages'] } = {};
-    let currentCustomer = '';
-
-    for (const line of lines) {
-      const trimmed = line.trim();
-      if (!trimmed) continue;
-
-      if (!/^\d/.test(trimmed) && /[a-zA-Z]/.test(trimmed) && trimmed.length > 2) {
-        currentCustomer = trimmed;
-        if (!grouped[currentCustomer]) {
-          grouped[currentCustomer] = [];
-        }
-        continue;
-      }
-
-      const parts = trimmed.split(/\s+/);
-      if (parts.length >= 3 && currentCustomer) {
-        const cageNo = parseInt(parts[0]);
-        const birdCount = parseInt(parts[1]);
-        const weight = parseFloat(parts[2]);
-
-        if (!isNaN(cageNo) && !isNaN(birdCount) && !isNaN(weight)) {
-          grouped[currentCustomer].push({ cageNo, birdCount, weight });
-        }
-      }
-    }
-
-    const groupedArray: GroupedData[] = Object.entries(grouped).map(([customerName, cages]) => ({
-      customerName,
-      cages,
-      rate: 0,
-      vendorPrice: 0
-    }));
-
-    setGroupedData(groupedArray);
-  };
-
-  const updateGroupRate = (index: number, field: 'rate' | 'vendorPrice', value: number) => {
-    const updated = [...groupedData];
-    updated[index][field] = value;
-    setGroupedData(updated);
-  };
-
-  const generateInvoices = async () => {
-    setProcessing(true);
-    setResults([]);
-    
-    try {
-      for (const group of groupedData) {
-        if (group.rate === 0) {
-          setResults(prev => [...prev, `❌ Skipped ${group.customerName}: No rate specified`]);
-          continue;
-        }
-
-        let customer = customers.find(c => 
-          c.name.toLowerCase().includes(group.customerName.toLowerCase()) ||
-          group.customerName.toLowerCase().includes(c.name.toLowerCase())
-        );
-
-        if (!customer) {
-          customer = await dataService.createCustomer({
-            name: group.customerName,
-            email: '',
-            phone: '',
-            address: '',
-            customerType: 'regular',
-            defaultRate: group.rate,
-            balance: 0,
-            advance: 0
-          });
-          setResults(prev => [...prev, `✅ Created new customer: ${customer!.name}`]);
-        }
-
-        const totalBirds = group.cages.reduce((sum, cage) => sum + cage.birdCount, 0);
-        const totalWeight = group.cages.reduce((sum, cage) => sum + cage.weight, 0);
-        const subtotal = totalWeight * group.rate;
-        const tax = subtotal * 0.18;
-        const total = subtotal + tax;
-
-        const invoice = {
-          invoiceNumber: `FI${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
-          customerId: customer.id,
-          customerName: customer.name,
-          cages: group.cages.map(cage => ({
-            cageNo: cage.cageNo,
-            birdCount: cage.birdCount,
-            weight: cage.weight,
-            rate: group.rate,
-            amount: cage.weight * group.rate
-          })),
-          subtotal,
-          tax,
-          total,
-          paidAmount: 0,
-          dueAmount: total,
-          paymentMethod: 'cash' as const,
-          status: 'draft' as const,
-          isManual: true,
-          version: '1.0',
-          weightLoss: 0,
-          additionalCharges: 0,
-          dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
-        };
-
-        const createdInvoice = await dataService.createInvoice(invoice);
-        
-        const filename = `I${createdInvoice.version}_${customer.name.replace(/\s+/g, '_')}_${new Date().toLocaleDateString('en-GB').replace(/\//g, '-')}_1.pdf`;
-        
-        setResults(prev => [...prev, `✅ Invoice ${createdInvoice.invoiceNumber} created for ${customer!.name} - ₹${total.toFixed(2)}`]);
-        setResults(prev => [...prev, `📄 PDF: ${filename}`]);
-      }
-      
-      setResults(prev => [...prev, `🎉 Fast Invoice generation completed!`]);
-      
-    } catch (error) {
-      setResults(prev => [...prev, `❌ Error: ${error}`]);
-    } finally {
-      setProcessing(false);
-    }
-  };
-
-  const clearAll = () => {
-    setBulkText('');
-    setGroupedData([]);
-    setResults([]);
+  const handleDuplicateAction = (action: 'save-as-2' | 'overwrite') => {
+    setDuplicateAction(action);
+    setShowDuplicateDialog(false);
+    setShowSummary(true);
   };
 
   return (
@@ -490,672 +252,240 @@ export default function DC() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <div className="p-3 rounded-xl bg-gradient-to-r from-cyan-400 via-blue-500 to-purple-600 shadow-lg">
+          <div className="p-3 rounded-xl bg-gradient-to-r from-blue-500 to-purple-500 shadow-lg">
             <Truck className="w-6 h-6 text-white" />
           </div>
           <div>
-            <h1 className="text-2xl font-bold text-white">DC Management</h1>
-            <p className="text-gray-400">Delivery Challan & Fast Invoice Generation</p>
+            <h1 className="text-2xl font-bold text-white">Delivery Challan</h1>
+            <p className="text-gray-400">Create and manage delivery challans</p>
           </div>
         </div>
         
-        <div className="flex items-center gap-3">
-          {autoSaveStatus && (
-            <div className="flex items-center gap-2 text-green-400 text-sm">
-              <Clock className="w-4 h-4" />
-              {autoSaveStatus}
-            </div>
-          )}
-          <button
-            onClick={newDC}
-            className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-pink-500 via-purple-500 to-cyan-500 rounded-xl text-white font-medium shadow-[0_0_20px_rgba(255,0,128,0.3)] hover:shadow-[0_0_30px_rgba(255,0,128,0.5)] transition-all duration-300"
-          >
-            <Plus className="w-4 h-4" />
-            New DC
-          </button>
+        <div className="flex items-center gap-2 text-sm text-gray-400">
+          <Clock className="w-4 h-4" />
+          <span>Auto-save: Every 5 min</span>
         </div>
       </div>
 
-      {/* Tab Navigation */}
-      <div className="bg-[#2a2a2a] rounded-2xl p-2 shadow-[8px_8px_16px_#0f0f0f,-8px_-8px_16px_#3a3a3a]">
-        <div className="flex gap-2">
-          <button
-            onClick={() => setActiveTab('dc')}
-            className={`flex items-center gap-2 px-6 py-3 rounded-xl font-medium transition-all duration-300 ${
-              activeTab === 'dc'
-                ? 'bg-gradient-to-r from-cyan-400 via-blue-500 to-purple-600 text-white shadow-[0_0_20px_rgba(0,255,255,0.3)]'
-                : 'text-gray-400 hover:text-white hover:bg-[#1a1a1a]'
-            }`}
-          >
-            <Truck className="w-5 h-5" />
-            Delivery Challan
-          </button>
-          <button
-            onClick={() => setActiveTab('fast')}
-            className={`flex items-center gap-2 px-6 py-3 rounded-xl font-medium transition-all duration-300 ${
-              activeTab === 'fast'
-                ? 'bg-gradient-to-r from-yellow-400 via-orange-500 to-red-500 text-white shadow-[0_0_20px_rgba(255,165,0,0.3)]'
-                : 'text-gray-400 hover:text-white hover:bg-[#1a1a1a]'
-            }`}
-          >
-            <Zap className="w-5 h-5" />
-            Fast Invoice
-          </button>
-        </div>
-      </div>
+      {/* DC Entry Form */}
+      <div className="bg-[#2a2a2a] rounded-2xl p-6 shadow-[8px_8px_16px_#0f0f0f,-8px_-8px_16px_#3a3a3a]">
+        <h3 className="text-xl font-semibold text-white mb-6">New Delivery Challan</h3>
+        
+        {/* Mandatory Fields */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+          {/* Date */}
+          <div>
+            <label className="flex items-center gap-2 text-gray-400 text-sm font-medium mb-2">
+              <Calendar className="w-4 h-4" />
+              Date *
+            </label>
+            <input
+              type="date"
+              value={currentDC.date ? new Date(currentDC.date).toISOString().split('T')[0] : ''}
+              onChange={(e) => setCurrentDC({ ...currentDC, date: new Date(e.target.value) })}
+              className="w-full px-4 py-3 bg-[#1a1a1a] border border-gray-600 rounded-xl text-white focus:border-purple-500 focus:outline-none shadow-[inset_2px_2px_4px_#0f0f0f,inset_-2px_-2px_4px_#2a2a2a]"
+              required
+            />
+          </div>
 
-      {/* DC Tab Content */}
-      {activeTab === 'dc' && (
-        <div className="space-y-6">
-          {/* DC Form */}
-          <div className="bg-[#2a2a2a] rounded-2xl p-6 shadow-[8px_8px_16px_#0f0f0f,-8px_-8px_16px_#3a3a3a]">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
-              {/* Date Field */}
-              <div>
-                <label className="block text-gray-400 text-sm font-medium mb-2">
-                  Date <span className="text-red-400">*</span>
-                </label>
-                <input
-                  type="date"
-                  value={currentDC.date ? currentDC.date.toISOString().split('T')[0] : ''}
-                  onChange={(e) => setCurrentDC({ ...currentDC, date: new Date(e.target.value) })}
-                  className="w-full px-4 py-3 bg-[#1a1a1a] border border-gray-600 rounded-xl text-white focus:border-purple-500 focus:outline-none shadow-[inset_2px_2px_4px_#0f0f0f,inset_-2px_-2px_4px_#2a2a2a]"
-                  required
-                />
-              </div>
+          {/* Vendor Name */}
+          <div>
+            <label className="flex items-center gap-2 text-gray-400 text-sm font-medium mb-2">
+              <User className="w-4 h-4" />
+              Vendor Name *
+            </label>
+            <div className="relative">
+              <input
+                type="text"
+                value={vendorSearch}
+                onChange={(e) => setVendorSearch(e.target.value)}
+                placeholder="Type to search vendors..."
+                className="w-full px-4 py-3 bg-[#1a1a1a] border border-gray-600 rounded-xl text-white placeholder-gray-400 focus:border-purple-500 focus:outline-none shadow-[inset_2px_2px_4px_#0f0f0f,inset_-2px_-2px_4px_#2a2a2a]"
+                required
+              />
               
-              {/* Vendor Selection */}
-              <div className="relative">
-                <label className="block text-gray-400 text-sm font-medium mb-2">
-                  Vendor Name <span className="text-red-400">*</span>
-                </label>
-                <div className="relative">
-                  <input
-                    type="text"
-                    value={vendorSearch}
-                    onChange={(e) => {
-                      setVendorSearch(e.target.value);
-                      setShowVendorDropdown(true);
-                    }}
-                    onFocus={() => setShowVendorDropdown(true)}
-                    className="w-full px-4 py-3 bg-[#1a1a1a] border border-gray-600 rounded-xl text-white placeholder-gray-400 focus:border-purple-500 focus:outline-none shadow-[inset_2px_2px_4px_#0f0f0f,inset_-2px_-2px_4px_#2a2a2a]"
-                    placeholder="Search or select vendor..."
-                    required
-                  />
-                  <Search className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-                </div>
-                
-                {/* Vendor Dropdown */}
-                {showVendorDropdown && (
-                  <div className="absolute z-10 w-full mt-1 bg-[#1a1a1a] border border-gray-600 rounded-xl shadow-[8px_8px_16px_#0f0f0f,-8px_-8px_16px_#3a3a3a] max-h-48 overflow-y-auto">
-                    {filteredVendors.map(vendor => (
+              {/* Vendor Dropdown */}
+              {vendorSearch && (
+                <div className="absolute top-full left-0 right-0 mt-1 bg-[#1a1a1a] border border-gray-600 rounded-xl shadow-[8px_8px_16px_#0f0f0f,-8px_-8px_16px_#3a3a3a] z-10 max-h-48 overflow-y-auto">
+                  {filteredVendors.length > 0 ? (
+                    filteredVendors.map(vendor => (
                       <button
                         key={vendor.id}
                         onClick={() => selectVendor(vendor)}
-                        className="w-full text-left px-4 py-3 hover:bg-[#2a2a2a] text-white border-b border-gray-700 last:border-b-0"
+                        className="w-full text-left px-4 py-3 hover:bg-[#2a2a2a] text-white transition-colors duration-200 first:rounded-t-xl last:rounded-b-xl"
                       >
-                        <div className="flex items-center justify-between">
-                          <span className="font-medium">{vendor.name}</span>
-                          <span className="text-gray-400 text-sm">₹{vendor.averageRate}/kg</span>
-                        </div>
+                        <p className="font-medium">{vendor.name}</p>
+                        <p className="text-gray-400 text-sm">{vendor.phone}</p>
                       </button>
-                    ))}
-                    
-                    {/* Add New Vendor Option */}
-                    <button
-                      onClick={() => {
-                        setShowNewVendorForm(true);
-                        setShowVendorDropdown(false);
-                      }}
-                      className="w-full text-left px-4 py-3 hover:bg-[#2a2a2a] text-green-400 border-t border-gray-700"
-                    >
-                      <div className="flex items-center gap-2">
-                        <Plus className="w-4 h-4" />
-                        Add New Vendor
-                      </div>
-                    </button>
-                  </div>
-                )}
-              </div>
-              
-              {/* Purchase Amount */}
-              <div>
-                <label className="block text-gray-400 text-sm font-medium mb-2">
-                  Purchase Amount (₹/kg) <span className="text-red-400">*</span>
-                </label>
-                <input
-                  type="number"
-                  step="0.01"
-                  value={purchaseAmount}
-                  onChange={(e) => setPurchaseAmount(parseFloat(e.target.value) || 0)}
-                  className="w-full px-4 py-3 bg-[#1a1a1a] border border-gray-600 rounded-xl text-white placeholder-gray-400 focus:border-purple-500 focus:outline-none shadow-[inset_2px_2px_4px_#0f0f0f,inset_-2px_-2px_4px_#2a2a2a]"
-                  placeholder="Enter rate per kg"
-                  required
-                />
-              </div>
-            </div>
-
-            {/* Selected Vendor Info */}
-            {selectedVendor && (
-              <div className="mb-6 p-4 bg-[#1a1a1a] rounded-xl shadow-[inset_2px_2px_4px_#0f0f0f,inset_-2px_-2px_4px_#2a2a2a]">
-                <div className="flex items-center gap-3">
-                  <User className="w-5 h-5 text-blue-400" />
-                  <div>
-                    <p className="text-white font-medium">{selectedVendor.name}</p>
-                    <p className="text-gray-400 text-sm">
-                      Total Purchases: ₹{selectedVendor.totalPurchases.toLocaleString()} | 
-                      Avg Rate: ₹{selectedVendor.averageRate}/kg
-                    </p>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Bulk Input */}
-            <div className="mb-6">
-              <div className="flex items-center gap-3 mb-3">
-                <button
-                  onClick={() => setShowBulkInput(!showBulkInput)}
-                  className="flex items-center gap-2 px-4 py-2 bg-[#1a1a1a] rounded-xl text-gray-300 hover:text-white transition-colors duration-200 shadow-[4px_4px_8px_#0f0f0f,-4px_-4px_8px_#3a3a3a]"
-                >
-                  <Upload className="w-4 h-4" />
-                  Bulk Paste Data
-                </button>
-                
-                <button
-                  onClick={addCage}
-                  disabled={currentDC.cages && currentDC.cages.length >= 60}
-                  className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-green-500 to-emerald-500 rounded-xl text-white font-medium disabled:opacity-50 disabled:cursor-not-allowed shadow-[0_0_15px_rgba(0,255,0,0.3)]"
-                >
-                  <Plus className="w-4 h-4" />
-                  Add Cage ({currentDC.cages?.length || 0}/60)
-                </button>
-              </div>
-
-              {showBulkInput && (
-                <div className="bg-[#1a1a1a] rounded-xl p-4 shadow-[inset_4px_4px_8px_#0f0f0f,inset_-4px_-4px_8px_#2a2a2a]">
-                  <textarea
-                    value={bulkText}
-                    onChange={(e) => setBulkText(e.target.value)}
-                    placeholder="Paste data in format:&#10;1 50 2.5&#10;2 45 2.3&#10;3 52 2.7"
-                    className="w-full h-32 px-3 py-2 bg-[#0f0f0f] border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:border-purple-500 focus:outline-none resize-none"
-                  />
-                  <div className="flex gap-2 mt-3">
-                    <button
-                      onClick={handleBulkPaste}
-                      className="px-4 py-2 bg-gradient-to-r from-blue-500 to-purple-500 rounded-lg text-white font-medium"
-                    >
-                      Parse & Add
-                    </button>
-                    <button
-                      onClick={() => setShowBulkInput(false)}
-                      className="px-4 py-2 bg-gray-600 rounded-lg text-white"
-                    >
-                      Cancel
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Summary Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-              <div className="bg-gradient-to-r from-cyan-400 via-blue-500 to-purple-600 rounded-xl p-4 text-white">
-                <div className="flex items-center gap-2 mb-2">
-                  <Calculator className="w-5 h-5" />
-                  <span className="font-medium">Total Birds</span>
-                </div>
-                <p className="text-2xl font-bold">{currentDC.totalBirds || 0}</p>
-              </div>
-              
-              <div className="bg-gradient-to-r from-pink-500 via-purple-500 to-indigo-500 rounded-xl p-4 text-white">
-                <div className="flex items-center gap-2 mb-2">
-                  <Calculator className="w-5 h-5" />
-                  <span className="font-medium">Total Weight</span>
-                </div>
-                <p className="text-2xl font-bold">{(currentDC.totalWeight || 0).toFixed(2)} kg</p>
-              </div>
-              
-              <div className="bg-gradient-to-r from-orange-400 via-red-500 to-pink-600 rounded-xl p-4 text-white">
-                <div className="flex items-center gap-2 mb-2">
-                  <FileText className="w-5 h-5" />
-                  <span className="font-medium">Purchase Rate</span>
-                </div>
-                <p className="text-2xl font-bold">₹{purchaseAmount}/kg</p>
-              </div>
-              
-              <div className="bg-gradient-to-r from-green-400 via-emerald-500 to-teal-600 rounded-xl p-4 text-white">
-                <div className="flex items-center gap-2 mb-2">
-                  <Calculator className="w-5 h-5" />
-                  <span className="font-medium">Total Amount</span>
-                </div>
-                <p className="text-2xl font-bold">₹{((currentDC.totalWeight || 0) * purchaseAmount).toFixed(2)}</p>
-              </div>
-            </div>
-
-            {/* Cages Table */}
-            {currentDC.cages && currentDC.cages.length > 0 && (
-              <div className="bg-[#1a1a1a] rounded-xl overflow-hidden shadow-[inset_4px_4px_8px_#0f0f0f,inset_-4px_-4px_8px_#2a2a2a]">
-                <div className="max-h-96 overflow-y-auto">
-                  <table className="w-full">
-                    <thead className="bg-[#0f0f0f] sticky top-0">
-                      <tr>
-                        <th className="px-4 py-3 text-left text-sm font-medium text-gray-400">Cage No</th>
-                        <th className="px-4 py-3 text-left text-sm font-medium text-gray-400">Bird Count</th>
-                        <th className="px-4 py-3 text-left text-sm font-medium text-gray-400">Weight (kg)</th>
-                        <th className="px-4 py-3 text-left text-sm font-medium text-gray-400">Amount (₹)</th>
-                        <th className="px-4 py-3 text-left text-sm font-medium text-gray-400">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-700">
-                      {currentDC.cages.map((cage, index) => (
-                        <motion.tr
-                          key={cage.id}
-                          initial={{ opacity: 0, y: 20 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          transition={{ delay: index * 0.05, duration: 0.3 }}
-                          className="hover:bg-[#2a2a2a] transition-colors duration-200"
-                        >
-                          <td className="px-4 py-3">
-                            <input
-                              type="number"
-                              value={cage.cageNo}
-                              onChange={(e) => updateCage(cage.id, 'cageNo', parseInt(e.target.value) || 0)}
-                              className="w-20 px-2 py-1 bg-[#0f0f0f] border border-gray-600 rounded text-white text-sm focus:border-purple-500 focus:outline-none"
-                            />
-                          </td>
-                          <td className="px-4 py-3">
-                            <input
-                              type="number"
-                              value={cage.birdCount}
-                              onChange={(e) => updateCage(cage.id, 'birdCount', parseInt(e.target.value) || 0)}
-                              className="w-20 px-2 py-1 bg-[#0f0f0f] border border-gray-600 rounded text-white text-sm focus:border-purple-500 focus:outline-none"
-                            />
-                          </td>
-                          <td className="px-4 py-3">
-                            <input
-                              type="number"
-                              step="0.1"
-                              value={cage.weight}
-                              onChange={(e) => updateCage(cage.id, 'weight', parseFloat(e.target.value) || 0)}
-                              className="w-24 px-2 py-1 bg-[#0f0f0f] border border-gray-600 rounded text-white text-sm focus:border-purple-500 focus:outline-none"
-                            />
-                          </td>
-                          <td className="px-4 py-3">
-                            <span className="text-green-400 font-medium">
-                              ₹{(cage.weight * purchaseAmount).toFixed(2)}
-                            </span>
-                          </td>
-                          <td className="px-4 py-3">
-                            <button
-                              onClick={() => removeCage(cage.id)}
-                              className="p-1 rounded bg-red-500/20 text-red-400 hover:bg-red-500/30 transition-colors duration-200"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          </td>
-                        </motion.tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            )}
-
-            {/* Action Buttons */}
-            <div className="flex items-center gap-3 mt-6">
-              <button
-                onClick={showSummaryDialog}
-                className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-green-500 to-emerald-500 rounded-xl text-white font-medium shadow-[0_0_20px_rgba(0,255,0,0.3)] hover:shadow-[0_0_30px_rgba(0,255,0,0.5)] transition-all duration-300"
-              >
-                <Save className="w-5 h-5" />
-                Save DC
-              </button>
-              
-              {currentDC.id && !currentDC.confirmed && (
-                <button
-                  onClick={confirmDC}
-                  className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-blue-500 to-purple-500 rounded-xl text-white font-medium shadow-[0_0_20px_rgba(0,0,255,0.3)] hover:shadow-[0_0_30px_rgba(0,0,255,0.5)] transition-all duration-300"
-                >
-                  <Check className="w-5 h-5" />
-                  Confirm DC
-                </button>
-              )}
-              
-              {currentDC.confirmed && (
-                <div className="flex items-center gap-2 text-green-400">
-                  <Check className="w-5 h-5" />
-                  <span className="font-medium">DC Confirmed</span>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Fast Invoice Tab Content (unchanged) */}
-      {activeTab === 'fast' && (
-        <div className="space-y-6">
-          {/* Bulk Input Section */}
-          <div className="bg-[#2a2a2a] rounded-2xl p-6 shadow-[8px_8px_16px_#0f0f0f,-8px_-8px_16px_#3a3a3a]">
-            <div className="flex items-center gap-3 mb-4">
-              <Upload className="w-5 h-5 text-purple-400" />
-              <h3 className="text-lg font-semibold text-white">Paste Full DC Data</h3>
-            </div>
-            
-            <div className="mb-4">
-              <textarea
-                value={bulkText}
-                onChange={(e) => setBulkText(e.target.value)}
-                placeholder="Paste data in format:&#10;Customer Name 1&#10;1 50 2.5&#10;2 45 2.3&#10;&#10;Customer Name 2&#10;3 52 2.7&#10;4 48 2.4"
-                className="w-full h-48 px-4 py-3 bg-[#1a1a1a] border border-gray-600 rounded-xl text-white placeholder-gray-400 focus:border-purple-500 focus:outline-none resize-none shadow-[inset_2px_2px_4px_#0f0f0f,inset_-2px_-2px_4px_#2a2a2a]"
-              />
-            </div>
-            
-            <div className="flex gap-3">
-              <button
-                onClick={parseBulkDCData}
-                disabled={!bulkText.trim()}
-                className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-blue-500 to-purple-500 rounded-xl text-white font-medium disabled:opacity-50 disabled:cursor-not-allowed shadow-[0_0_20px_rgba(0,0,255,0.3)] hover:shadow-[0_0_30px_rgba(0,0,255,0.5)] transition-all duration-300"
-              >
-                <Users className="w-5 h-5" />
-                Parse & Group by Customer
-              </button>
-              
-              <button
-                onClick={clearAll}
-                className="px-6 py-3 bg-gray-600 rounded-xl text-white font-medium hover:bg-gray-700 transition-colors duration-200"
-              >
-                Clear All
-              </button>
-            </div>
-          </div>
-
-          {/* Grouped Data Section */}
-          {groupedData.length > 0 && (
-            <div className="bg-[#2a2a2a] rounded-2xl p-6 shadow-[8px_8px_16px_#0f0f0f,-8px_-8px_16px_#3a3a3a]">
-              <div className="flex items-center justify-between mb-6">
-                <div className="flex items-center gap-3">
-                  <Calculator className="w-5 h-5 text-green-400" />
-                  <h3 className="text-lg font-semibold text-white">Set Rates for Each Customer</h3>
-                </div>
-                
-                <button
-                  onClick={generateInvoices}
-                  disabled={processing || groupedData.some(g => g.rate === 0)}
-                  className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-green-500 to-emerald-500 rounded-xl text-white font-medium disabled:opacity-50 disabled:cursor-not-allowed shadow-[0_0_20px_rgba(0,255,0,0.3)] hover:shadow-[0_0_30px_rgba(0,255,0,0.5)] transition-all duration-300"
-                >
-                  {processing ? (
-                    <>
-                      <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                      Processing...
-                    </>
+                    ))
                   ) : (
-                    <>
-                      <FileText className="w-5 h-5" />
-                      Generate All Invoices
-                    </>
-                  )}
-                </button>
-              </div>
-
-              <div className="space-y-4">
-                {groupedData.map((group, index) => {
-                  const totalBirds = group.cages.reduce((sum, cage) => sum + cage.birdCount, 0);
-                  const totalWeight = group.cages.reduce((sum, cage) => sum + cage.weight, 0);
-                  const estimatedAmount = totalWeight * group.rate;
-
-                  return (
-                    <motion.div
-                      key={index}
-                      initial={{ opacity: 0, y: 20 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ delay: index * 0.1, duration: 0.5 }}
-                      className="bg-[#1a1a1a] rounded-xl p-4 shadow-[inset_2px_2px_4px_#0f0f0f,inset_-2px_-2px_4px_#2a2a2a]"
+                    <button
+                      onClick={addNewVendor}
+                      className="w-full text-left px-4 py-3 hover:bg-[#2a2a2a] text-blue-400 transition-colors duration-200 rounded-xl"
                     >
-                      <div className="grid grid-cols-1 lg:grid-cols-6 gap-4 items-center">
-                        <div className="lg:col-span-2">
-                          <h4 className="text-white font-medium text-lg">{group.customerName}</h4>
-                          <p className="text-gray-400 text-sm">
-                            {group.cages.length} cages • {totalBirds} birds • {totalWeight.toFixed(2)} kg
-                          </p>
-                        </div>
-                        
-                        <div>
-                          <label className="block text-gray-400 text-sm mb-1">Selling Rate (₹/kg)</label>
-                          <input
-                            type="number"
-                            step="0.01"
-                            value={group.rate}
-                            onChange={(e) => updateGroupRate(index, 'rate', parseFloat(e.target.value) || 0)}
-                            className="w-full px-3 py-2 bg-[#0f0f0f] border border-gray-600 rounded-lg text-white focus:border-purple-500 focus:outline-none"
-                            placeholder="0.00"
-                          />
-                        </div>
-                        
-                        <div>
-                          <label className="block text-gray-400 text-sm mb-1">Vendor Price (₹/kg)</label>
-                          <input
-                            type="number"
-                            step="0.01"
-                            value={group.vendorPrice}
-                            onChange={(e) => updateGroupRate(index, 'vendorPrice', parseFloat(e.target.value) || 0)}
-                            className="w-full px-3 py-2 bg-[#0f0f0f] border border-gray-600 rounded-lg text-white focus:border-purple-500 focus:outline-none"
-                            placeholder="0.00"
-                          />
-                        </div>
-                        
-                        <div>
-                          <label className="block text-gray-400 text-sm mb-1">Estimated Amount</label>
-                          <p className="text-white font-medium text-lg">₹{estimatedAmount.toFixed(2)}</p>
-                          {group.vendorPrice > 0 && (
-                            <p className="text-green-400 text-sm">
-                              Profit: ₹{((group.rate - group.vendorPrice) * totalWeight).toFixed(2)}
-                            </p>
-                          )}
-                        </div>
-                        
-                        <div className="flex items-center justify-center">
-                          {group.rate === 0 ? (
-                            <div className="flex items-center gap-2 text-yellow-400">
-                              <AlertTriangle className="w-4 h-4" />
-                              <span className="text-sm">Set rate</span>
-                            </div>
-                          ) : (
-                            <div className="flex items-center gap-2 text-green-400">
-                              <Check className="w-4 h-4" />
-                              <span className="text-sm">Ready</span>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                      
-                      {/* Cage Details */}
-                      <div className="mt-3 pt-3 border-t border-gray-700">
-                        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-2 text-sm">
-                          {group.cages.map((cage, cageIndex) => (
-                            <div key={cageIndex} className="bg-[#0f0f0f] rounded px-2 py-1">
-                              <span className="text-gray-400">C{cage.cageNo}:</span>
-                              <span className="text-white ml-1">{cage.birdCount}b, {cage.weight}kg</span>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    </motion.div>
-                  );
-                })}
-              </div>
+                      + Add "{vendorSearch}" as new vendor
+                    </button>
+                  )}
+                </div>
+              )}
             </div>
-          )}
+          </div>
 
-          {/* Results Section */}
-          {results.length > 0 && (
-            <div className="bg-[#2a2a2a] rounded-2xl p-6 shadow-[8px_8px_16px_#0f0f0f,-8px_-8px_16px_#3a3a3a]">
-              <div className="flex items-center gap-3 mb-4">
-                <FileText className="w-5 h-5 text-blue-400" />
-                <h3 className="text-lg font-semibold text-white">Processing Results</h3>
-              </div>
-              
-              <div className="bg-[#1a1a1a] rounded-xl p-4 max-h-64 overflow-y-auto shadow-[inset_2px_2px_4px_#0f0f0f,inset_-2px_-2px_4px_#2a2a2a]">
-                {results.map((result, index) => (
-                  <motion.div
-                    key={index}
-                    initial={{ opacity: 0, x: -20 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    transition={{ delay: index * 0.1, duration: 0.3 }}
-                    className="py-1 text-sm font-mono"
-                  >
-                    <span className={
-                      result.startsWith('✅') ? 'text-green-400' :
-                      result.startsWith('❌') ? 'text-red-400' :
-                      result.startsWith('🎉') ? 'text-purple-400' :
-                      result.startsWith('📄') ? 'text-blue-400' :
-                      'text-gray-300'
-                    }>
-                      {result}
-                    </span>
-                  </motion.div>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* New Vendor Form Modal */}
-      {showNewVendorForm && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-[#2a2a2a] rounded-2xl p-6 w-full max-w-md shadow-[8px_8px_16px_#0f0f0f,-8px_-8px_16px_#3a3a3a]">
-            <h3 className="text-xl font-semibold text-white mb-4">Add New Vendor</h3>
+          {/* Purchase Rate */}
+          <div>
+            <label className="flex items-center gap-2 text-gray-400 text-sm font-medium mb-2">
+              <DollarSign className="w-4 h-4" />
+              Purchase Rate (₹/kg) *
+            </label>
             <input
-              type="text"
-              value={newVendorName}
-              onChange={(e) => setNewVendorName(e.target.value)}
-              placeholder="Enter vendor name"
-              className="w-full px-4 py-3 bg-[#1a1a1a] border border-gray-600 rounded-xl text-white placeholder-gray-400 focus:border-purple-500 focus:outline-none mb-4"
+              type="number"
+              step="0.01"
+              value={currentDC.purchaseRate || ''}
+              onChange={(e) => setCurrentDC({ ...currentDC, purchaseRate: parseFloat(e.target.value) || 0 })}
+              placeholder="Enter rate per kg"
+              className="w-full px-4 py-3 bg-[#1a1a1a] border border-gray-600 rounded-xl text-white placeholder-gray-400 focus:border-purple-500 focus:outline-none shadow-[inset_2px_2px_4px_#0f0f0f,inset_-2px_-2px_4px_#2a2a2a]"
+              required
             />
-            <div className="flex gap-3">
-              <button
-                onClick={addNewVendor}
-                className="flex-1 px-4 py-2 bg-gradient-to-r from-green-500 to-emerald-500 rounded-xl text-white font-medium"
-              >
-                Add Vendor
-              </button>
-              <button
-                onClick={() => {
-                  setShowNewVendorForm(false);
-                  setNewVendorName('');
-                }}
-                className="flex-1 px-4 py-2 bg-gray-600 rounded-xl text-white font-medium"
-              >
-                Cancel
-              </button>
-            </div>
           </div>
         </div>
-      )}
 
-      {/* Duplicate Date Dialog */}
-      {showDuplicateDialog && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-[#2a2a2a] rounded-2xl p-6 w-full max-w-md shadow-[8px_8px_16px_#0f0f0f,-8px_-8px_16px_#3a3a3a]">
-            <div className="flex items-center gap-3 mb-4">
-              <AlertTriangle className="w-6 h-6 text-yellow-400" />
-              <h3 className="text-xl font-semibold text-white">DC Already Exists</h3>
-            </div>
-            <p className="text-gray-400 mb-6">
-              DC already exists for {currentDC.date?.toLocaleDateString()}. Would you like to:
-            </p>
-            <div className="space-y-3">
-              <button
-                onClick={() => {
-                  setDuplicateAction('save-as-2');
-                  saveDC();
-                }}
-                className="w-full px-4 py-3 bg-gradient-to-r from-blue-500 to-purple-500 rounded-xl text-white font-medium"
-              >
-                Save as DC-2
-              </button>
-              <button
-                onClick={() => {
-                  setDuplicateAction('overwrite');
-                  saveDC();
-                }}
-                className="w-full px-4 py-3 bg-gradient-to-r from-red-500 to-pink-500 rounded-xl text-white font-medium"
-              >
-                Overwrite Existing DC
-              </button>
-              <button
-                onClick={() => {
-                  setShowDuplicateDialog(false);
-                  setDuplicateAction(null);
-                }}
-                className="w-full px-4 py-3 bg-gray-600 rounded-xl text-white font-medium"
-              >
-                Cancel
-              </button>
-            </div>
+        {/* Bulk Data Entry */}
+        <div className="mb-6">
+          <label className="flex items-center gap-2 text-gray-400 text-sm font-medium mb-2">
+            <FileText className="w-4 h-4" />
+            Bulk Data Entry (Format: cageNo birdCount weight)
+          </label>
+          <div className="flex gap-3">
+            <textarea
+              value={bulkData}
+              onChange={(e) => setBulkData(e.target.value)}
+              placeholder="1 50 2.5&#10;2 45 2.3&#10;3 48 2.7"
+              className="flex-1 px-4 py-3 bg-[#1a1a1a] border border-gray-600 rounded-xl text-white placeholder-gray-400 focus:border-purple-500 focus:outline-none shadow-[inset_2px_2px_4px_#0f0f0f,inset_-2px_-2px_4px_#2a2a2a] resize-none"
+              rows={3}
+            />
+            <button
+              onClick={parseBulkData}
+              className="px-6 py-3 bg-gradient-to-r from-green-500 to-emerald-500 rounded-xl text-white font-medium shadow-[0_0_15px_rgba(0,255,0,0.3)] hover:shadow-[0_0_25px_rgba(0,255,0,0.5)] transition-all duration-300"
+            >
+              Parse Data
+            </button>
           </div>
         </div>
-      )}
 
-      {/* Summary Dialog */}
-      {showSummary && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-[#2a2a2a] rounded-2xl p-6 w-full max-w-lg shadow-[8px_8px_16px_#0f0f0f,-8px_-8px_16px_#3a3a3a]">
-            <h3 className="text-xl font-semibold text-white mb-6">DC Summary</h3>
-            
-            <div className="space-y-4 mb-6">
-              <div className="flex justify-between">
-                <span className="text-gray-400">Date:</span>
-                <span className="text-white">{currentDC.date?.toLocaleDateString()}</span>
+        {/* Cage Management */}
+        <div className="mb-6">
+          <div className="flex items-center justify-between mb-4">
+            <h4 className="text-lg font-semibold text-white">Cage Details</h4>
+            <button
+              onClick={addSingleCage}
+              className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-blue-500 to-purple-500 rounded-xl text-white font-medium shadow-[0_0_15px_rgba(0,0,255,0.3)] hover:shadow-[0_0_25px_rgba(0,0,255,0.5)] transition-all duration-300"
+            >
+              <Plus className="w-4 h-4" />
+              Add Cage
+            </button>
+          </div>
+
+          {/* Cage List */}
+          <div className="space-y-3 max-h-64 overflow-y-auto">
+            {currentDC.cages && currentDC.cages.length > 0 ? (
+              currentDC.cages.map((cage, index) => (
+                <motion.div
+                  key={cage.id}
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: index * 0.1, duration: 0.3 }}
+                  className="grid grid-cols-4 gap-4 items-center p-4 bg-[#1a1a1a] rounded-xl shadow-[inset_2px_2px_4px_#0f0f0f,inset_-2px_-2px_4px_#2a2a2a]"
+                >
+                  <div>
+                    <label className="text-gray-400 text-xs">Cage No.</label>
+                    <input
+                      type="number"
+                      value={cage.cageNo}
+                      onChange={(e) => updateCage(cage.id, 'cageNo', parseInt(e.target.value) || 0)}
+                      className="w-full px-3 py-2 bg-[#0f0f0f] border border-gray-600 rounded-lg text-white focus:border-purple-500 focus:outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-gray-400 text-xs">Birds</label>
+                    <input
+                      type="number"
+                      value={cage.birdCount}
+                      onChange={(e) => updateCage(cage.id, 'birdCount', parseInt(e.target.value) || 0)}
+                      className="w-full px-3 py-2 bg-[#0f0f0f] border border-gray-600 rounded-lg text-white focus:border-purple-500 focus:outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-gray-400 text-xs">Weight (kg)</label>
+                    <input
+                      type="number"
+                      step="0.1"
+                      value={cage.weight}
+                      onChange={(e) => updateCage(cage.id, 'weight', parseFloat(e.target.value) || 0)}
+                      className="w-full px-3 py-2 bg-[#0f0f0f] border border-gray-600 rounded-lg text-white focus:border-purple-500 focus:outline-none"
+                    />
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-white font-medium">
+                      ₹{((cage.weight || 0) * (currentDC.purchaseRate || 0)).toFixed(2)}
+                    </span>
+                    <button
+                      onClick={() => removeCage(cage.id)}
+                      className="p-2 bg-red-500/20 text-red-400 rounded-lg hover:bg-red-500/30 transition-colors duration-200"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                </motion.div>
+              ))
+            ) : (
+              <div className="text-center py-8 text-gray-400">
+                <Package className="w-12 h-12 mx-auto mb-3 opacity-50" />
+                <p>No cages added yet. Use bulk entry or add individual cages.</p>
               </div>
-              <div className="flex justify-between">
-                <span className="text-gray-400">Vendor:</span>
-                <span className="text-white">{selectedVendor?.name}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-gray-400">Total Birds:</span>
-                <span className="text-white">{currentDC.totalBirds}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-gray-400">Total Weight:</span>
-                <span className="text-white">{currentDC.totalWeight?.toFixed(2)} kg</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-gray-400">Purchase Rate:</span>
-                <span className="text-white">₹{purchaseAmount}/kg</span>
-              </div>
-              <div className="flex justify-between border-t border-gray-700 pt-4">
-                <span className="text-gray-400 font-medium">Total Amount:</span>
-                <span className="text-green-400 font-bold text-lg">
-                  ₹{((currentDC.totalWeight || 0) * purchaseAmount).toFixed(2)}
-                </span>
-              </div>
-            </div>
-            
-            <div className="flex gap-3">
-              <button
-                onClick={saveDC}
-                className="flex-1 px-6 py-3 bg-gradient-to-r from-green-500 to-emerald-500 rounded-xl text-white font-medium"
-              >
-                Confirm & Save
-              </button>
-              <button
-                onClick={() => setShowSummary(false)}
-                className="flex-1 px-6 py-3 bg-gray-600 rounded-xl text-white font-medium"
-              >
-                Cancel
-              </button>
-            </div>
+            )}
           </div>
         </div>
-      )}
 
-      {/* DC History */}
+        {/* Summary */}
+        {currentDC.cages && currentDC.cages.length > 0 && (
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+            <div className="bg-[#1a1a1a] rounded-xl p-4 shadow-[inset_2px_2px_4px_#0f0f0f,inset_-2px_-2px_4px_#2a2a2a]">
+              <p className="text-gray-400 text-sm">Total Cages</p>
+              <p className="text-2xl font-bold text-white">{currentDC.cages.length}</p>
+            </div>
+            <div className="bg-[#1a1a1a] rounded-xl p-4 shadow-[inset_2px_2px_4px_#0f0f0f,inset_-2px_-2px_4px_#2a2a2a]">
+              <p className="text-gray-400 text-sm">Total Birds</p>
+              <p className="text-2xl font-bold text-blue-400">{currentDC.totalBirds}</p>
+            </div>
+            <div className="bg-[#1a1a1a] rounded-xl p-4 shadow-[inset_2px_2px_4px_#0f0f0f,inset_-2px_-2px_4px_#2a2a2a]">
+              <p className="text-gray-400 text-sm">Total Weight</p>
+              <p className="text-2xl font-bold text-green-400">{currentDC.totalWeight.toFixed(2)} kg</p>
+            </div>
+            <div className="bg-[#1a1a1a] rounded-xl p-4 shadow-[inset_2px_2px_4px_#0f0f0f,inset_-2px_-2px_4px_#2a2a2a]">
+              <p className="text-gray-400 text-sm">Total Amount</p>
+              <p className="text-2xl font-bold text-purple-400">
+                ₹{((currentDC.totalWeight || 0) * (currentDC.purchaseRate || 0)).toFixed(2)}
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* Save Button */}
+        <div className="flex justify-end">
+          <button
+            onClick={handleSave}
+            className="flex items-center gap-2 px-8 py-3 bg-gradient-to-r from-pink-500 via-purple-500 to-cyan-500 rounded-xl text-white font-medium shadow-[0_0_20px_rgba(255,0,128,0.3)] hover:shadow-[0_0_30px_rgba(255,0,128,0.5)] transition-all duration-300"
+          >
+            <Save className="w-5 h-5" />
+            Save DC
+          </button>
+        </div>
+      </div>
+
+      {/* Recent Delivery Challans */}
       <div className="bg-[#2a2a2a] rounded-2xl shadow-[8px_8px_16px_#0f0f0f,-8px_-8px_16px_#3a3a3a] overflow-hidden">
         <div className="p-6 border-b border-gray-700">
-          <h3 className="text-xl font-semibold text-white">Recent Delivery Challans ({deliveryChallans.length})</h3>
+          <h3 className="text-xl font-semibold text-white">Recent Delivery Challans (Last 30)</h3>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full">
@@ -1164,11 +494,10 @@ export default function DC() {
                 <th className="px-6 py-4 text-left text-sm font-medium text-gray-400">DC Number</th>
                 <th className="px-6 py-4 text-left text-sm font-medium text-gray-400">Date</th>
                 <th className="px-6 py-4 text-left text-sm font-medium text-gray-400">Vendor</th>
-                <th className="px-6 py-4 text-left text-sm font-medium text-gray-400">Vendor</th>
-                <th className="px-6 py-4 text-left text-sm font-medium text-gray-400">Weight</th>
-                <th className="px-6 py-4 text-left text-sm font-medium text-gray-400">Rate</th>
-                <th className="px-6 py-4 text-left text-sm font-medium text-gray-400">Amount</th>
-                <th className="px-6 py-4 text-left text-sm font-medium text-gray-400">Amount</th>
+                <th className="px-6 py-4 text-left text-sm font-medium text-gray-400">Birds</th>
+                <th className="px-6 py-4 text-left text-sm font-medium text-gray-400">Weight (kg)</th>
+                <th className="px-6 py-4 text-left text-sm font-medium text-gray-400">Rate (₹/kg)</th>
+                <th className="px-6 py-4 text-left text-sm font-medium text-gray-400">Total Amount</th>
                 <th className="px-6 py-4 text-left text-sm font-medium text-gray-400">Status</th>
                 <th className="px-6 py-4 text-left text-sm font-medium text-gray-400">Actions</th>
               </tr>
@@ -1179,32 +508,31 @@ export default function DC() {
                   key={dc.id}
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: index * 0.1, duration: 0.5 }}
+                  transition={{ delay: index * 0.05, duration: 0.3 }}
                   className="hover:bg-[#1a1a1a] transition-colors duration-200"
                 >
                   <td className="px-6 py-4">
                     <p className="text-white font-medium">{dc.dcNumber}</p>
                   </td>
                   <td className="px-6 py-4">
-                    <p className="text-gray-300">{dc.date.toLocaleDateString()}</p>
+                    <p className="text-gray-300">{new Date(dc.date).toLocaleDateString()}</p>
                   </td>
                   <td className="px-6 py-4">
                     <p className="text-white">{dc.vendorName}</p>
                   </td>
                   <td className="px-6 py-4">
-                    <p className="text-white">{(dc as any).vendorName || 'N/A'}</p>
+                    <p className="text-blue-400 font-medium">{dc.totalBirds}</p>
                   </td>
                   <td className="px-6 py-4">
-                    <p className="text-white">{dc.totalWeight.toFixed(2)} kg</p>
+                    <p className="text-green-400 font-medium">{dc.totalWeight.toFixed(2)}</p>
                   </td>
                   <td className="px-6 py-4">
-                    <p className="text-green-400">₹{dc.purchaseRate}/kg</p>
+                    <p className="text-yellow-400 font-medium">₹{dc.purchaseRate?.toFixed(2) || '0.00'}</p>
                   </td>
                   <td className="px-6 py-4">
-                    <p className="text-green-400 font-medium">₹{(dc.totalWeight * dc.purchaseRate).toFixed(2)}</p>
-                  </td>
-                  <td className="px-6 py-4">
-                    <p className="text-green-400">₹{((dc as any).totalAmount || 0).toFixed(2)}</p>
+                    <p className="text-purple-400 font-medium">
+                      ₹{((dc.totalWeight || 0) * (dc.purchaseRate || 0)).toFixed(2)}
+                    </p>
                   </td>
                   <td className="px-6 py-4">
                     <span className={`px-3 py-1 rounded-full text-xs font-medium border ${
@@ -1217,11 +545,11 @@ export default function DC() {
                   </td>
                   <td className="px-6 py-4">
                     <div className="flex items-center gap-2">
-                      <button
-                        onClick={() => setCurrentDC(dc)}
-                        className="p-2 rounded-lg bg-blue-500/20 text-blue-400 hover:bg-blue-500/30 transition-colors duration-200"
-                      >
+                      <button className="p-2 rounded-lg bg-blue-500/20 text-blue-400 hover:bg-blue-500/30 transition-colors duration-200">
                         <Edit className="w-4 h-4" />
+                      </button>
+                      <button className="p-2 rounded-lg bg-red-500/20 text-red-400 hover:bg-red-500/30 transition-colors duration-200">
+                        <Trash2 className="w-4 h-4" />
                       </button>
                     </div>
                   </td>
@@ -1231,12 +559,111 @@ export default function DC() {
           </table>
           
           {deliveryChallans.length === 0 && (
-            <div className="p-8 text-center">
-              <p className="text-gray-400">No delivery challans found. Create your first DC above.</p>
+            <div className="text-center py-12">
+              <Truck className="w-16 h-16 mx-auto mb-4 text-gray-600" />
+              <p className="text-gray-400 text-lg">No delivery challans found</p>
+              <p className="text-gray-500 text-sm">Create your first DC to get started</p>
             </div>
           )}
         </div>
       </div>
+
+      {/* Duplicate Date Dialog */}
+      {showDuplicateDialog && existingDC && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-[#2a2a2a] rounded-2xl p-6 w-full max-w-md shadow-[8px_8px_16px_#0f0f0f,-8px_-8px_16px_#3a3a3a]">
+            <div className="flex items-center gap-3 mb-4">
+              <AlertTriangle className="w-6 h-6 text-yellow-400" />
+              <h3 className="text-xl font-semibold text-white">DC Already Exists</h3>
+            </div>
+            
+            <p className="text-gray-400 mb-6">
+              DC already exists for {new Date(currentDC.date!).toLocaleDateString()}. 
+              What would you like to do?
+            </p>
+            
+            <div className="flex gap-3">
+              <button
+                onClick={() => handleDuplicateAction('save-as-2')}
+                className="flex-1 px-4 py-3 bg-gradient-to-r from-blue-500 to-purple-500 rounded-xl text-white font-medium"
+              >
+                Save as DC-2
+              </button>
+              <button
+                onClick={() => handleDuplicateAction('overwrite')}
+                className="flex-1 px-4 py-3 bg-gradient-to-r from-orange-500 to-red-500 rounded-xl text-white font-medium"
+              >
+                Overwrite Existing
+              </button>
+            </div>
+            
+            <button
+              onClick={() => setShowDuplicateDialog(false)}
+              className="w-full mt-3 px-4 py-2 bg-gray-600 rounded-xl text-white hover:bg-gray-700 transition-colors duration-200"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Save Summary Dialog */}
+      {showSummary && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-[#2a2a2a] rounded-2xl p-6 w-full max-w-lg shadow-[8px_8px_16px_#0f0f0f,-8px_-8px_16px_#3a3a3a]">
+            <div className="flex items-center gap-3 mb-6">
+              <CheckCircle className="w-6 h-6 text-green-400" />
+              <h3 className="text-xl font-semibold text-white">Confirm DC Details</h3>
+            </div>
+            
+            <div className="space-y-4 mb-6">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <p className="text-gray-400 text-sm">Date</p>
+                  <p className="text-white font-medium">{new Date(currentDC.date!).toLocaleDateString()}</p>
+                </div>
+                <div>
+                  <p className="text-gray-400 text-sm">Vendor</p>
+                  <p className="text-white font-medium">{currentDC.vendorName}</p>
+                </div>
+                <div>
+                  <p className="text-gray-400 text-sm">Total Birds</p>
+                  <p className="text-blue-400 font-medium">{currentDC.totalBirds}</p>
+                </div>
+                <div>
+                  <p className="text-gray-400 text-sm">Total Weight</p>
+                  <p className="text-green-400 font-medium">{currentDC.totalWeight?.toFixed(2)} kg</p>
+                </div>
+                <div>
+                  <p className="text-gray-400 text-sm">Purchase Rate</p>
+                  <p className="text-yellow-400 font-medium">₹{currentDC.purchaseRate?.toFixed(2)}/kg</p>
+                </div>
+                <div>
+                  <p className="text-gray-400 text-sm">Total Amount</p>
+                  <p className="text-purple-400 font-medium">
+                    ₹{((currentDC.totalWeight || 0) * (currentDC.purchaseRate || 0)).toFixed(2)}
+                  </p>
+                </div>
+              </div>
+            </div>
+            
+            <div className="flex gap-3">
+              <button
+                onClick={confirmSave}
+                className="flex-1 px-6 py-3 bg-gradient-to-r from-green-500 to-emerald-500 rounded-xl text-white font-medium shadow-[0_0_20px_rgba(0,255,0,0.3)]"
+              >
+                Confirm & Save
+              </button>
+              <button
+                onClick={() => setShowSummary(false)}
+                className="px-6 py-3 bg-gray-600 rounded-xl text-white font-medium hover:bg-gray-700 transition-colors duration-200"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
