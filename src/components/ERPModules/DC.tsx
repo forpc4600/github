@@ -153,6 +153,76 @@ export default function DC() {
     setShowVendorDropdown(false);
   };
 
+  // Generate vendor code from vendor name
+  const generateVendorCode = (vendorName: string): string => {
+    const name = vendorName.toLowerCase().replace(/[^a-z]/g, '');
+    
+    // Common vendor code mappings
+    const vendorMappings: { [key: string]: string } = {
+      'suguna': 'sgn',
+      'avee': 'ave',
+      'venkateshwara': 'vnk',
+      'skylark': 'sky',
+      'godrej': 'gdr',
+      'cargill': 'car',
+      'cp': 'cp',
+      'bharath': 'bhr',
+      'srinivasa': 'sri',
+      'krishna': 'krs'
+    };
+    
+    // Check if vendor has a predefined mapping
+    if (vendorMappings[name]) {
+      return vendorMappings[name];
+    }
+    
+    // Generate code from vendor name
+    if (name.length <= 3) {
+      return name;
+    } else if (name.length <= 6) {
+      return name.substring(0, 3);
+    } else {
+      // For longer names, take first letter + consonants
+      const consonants = name.replace(/[aeiou]/g, '');
+      if (consonants.length >= 3) {
+        return consonants.substring(0, 3);
+      } else {
+        return name.substring(0, 3);
+      }
+    }
+  };
+
+  // Generate DC number with date and vendor code
+  const generateDCNumber = async (date: Date, vendorName: string): Promise<string> => {
+    const vendorCode = generateVendorCode(vendorName);
+    
+    // Format date as DDMMYY
+    const day = date.getDate().toString().padStart(2, '0');
+    const month = (date.getMonth() + 1).toString().padStart(2, '0');
+    const year = date.getFullYear().toString().slice(-2);
+    const dateCode = `${day}${month}${year}`;
+    
+    // Check for existing DCs on the same date with same vendor
+    const existingDCs = await dataService.getDeliveryChallans();
+    const sameDateDCs = existingDCs.filter(dc => {
+      const dcDate = new Date(dc.date);
+      return dcDate.toDateString() === date.toDateString() && 
+             dc.vendorName === vendorName;
+    });
+    
+    // Generate base DC number
+    const baseDCNumber = `${vendorCode}${dateCode}`;
+    
+    // If no existing DCs, return base number
+    if (sameDateDCs.length === 0) {
+      return baseDCNumber;
+    }
+    
+    // Generate sequence letter (a, b, c...)
+    const sequenceLetter = String.fromCharCode(97 + sameDateDCs.length); // 97 = 'a'
+    return `${baseDCNumber}${sequenceLetter}`;
+  };
+
   // DC Functions
   const handleBulkPaste = () => {
     const parsed = dataService.parseBulkData(bulkText);
@@ -275,10 +345,20 @@ export default function DC() {
     }
 
     try {
-      let dcNumber = `DC${Date.now()}`;
+      let dcNumber = await generateDCNumber(currentDC.date, selectedVendor.name);
       
       if (duplicateAction === 'save-as-2') {
-        dcNumber = `${existingDC?.dcNumber}-2` || `DC${Date.now()}-2`;
+        // Check for existing DCs on the same date
+        const existingDCs = await dataService.getDeliveryChallans();
+        const sameDateDCs = existingDCs.filter(dc => {
+          const dcDate = new Date(dc.date);
+          return dcDate.toDateString() === currentDC.date!.toDateString() && 
+                 dc.vendorName === selectedVendor.name;
+        });
+        
+        // Generate new DC number with suffix
+        const sequenceLetter = String.fromCharCode(97 + sameDateDCs.length);
+        dcNumber = `${dcNumber}${sequenceLetter}`;
       } else if (duplicateAction === 'overwrite' && existingDC) {
         await dataService.deleteDeliveryChallan(existingDC.id);
         dcNumber = existingDC.dcNumber;
@@ -1114,6 +1194,10 @@ export default function DC() {
                 <span className="text-white">{selectedVendor?.name}</span>
               </div>
               <div className="flex justify-between">
+                <span className="text-gray-400">DC Number:</span>
+                <span className="text-white">{selectedVendor && currentDC.date ? generateVendorCode(selectedVendor.name) + currentDC.date.getDate().toString().padStart(2, '0') + (currentDC.date.getMonth() + 1).toString().padStart(2, '0') + currentDC.date.getFullYear().toString().slice(-2) : ''}</span>
+              </div>
+              <div className="flex justify-between">
                 <span className="text-gray-400">Total Birds:</span>
                 <span className="text-white">{currentDC.totalBirds}</span>
               </div>
@@ -1163,6 +1247,7 @@ export default function DC() {
                 <th className="px-6 py-4 text-left text-sm font-medium text-gray-400">DC Number</th>
                 <th className="px-6 py-4 text-left text-sm font-medium text-gray-400">Date</th>
                 <th className="px-6 py-4 text-left text-sm font-medium text-gray-400">Vendor</th>
+                <th className="px-6 py-4 text-left text-sm font-medium text-gray-400">Code</th>
                 <th className="px-6 py-4 text-left text-sm font-medium text-gray-400">Weight</th>
                 <th className="px-6 py-4 text-left text-sm font-medium text-gray-400">Rate</th>
                 <th className="px-6 py-4 text-left text-sm font-medium text-gray-400">Amount</th>
@@ -1187,6 +1272,11 @@ export default function DC() {
                   </td>
                   <td className="px-6 py-4">
                     <p className="text-white">{(dc as any).vendorName || 'N/A'}</p>
+                  </td>
+                  <td className="px-6 py-4">
+                    <span className="px-2 py-1 bg-blue-500/20 text-blue-400 rounded text-xs font-mono">
+                      {generateVendorCode((dc as any).vendorName || '')}
+                    </span>
                   </td>
                   <td className="px-6 py-4">
                     <p className="text-white">{dc.totalWeight.toFixed(2)} kg</p>
