@@ -274,7 +274,6 @@ export default function DC() {
       return; // Wait for user decision
         vendorName: selectedVendor.name,
         purchaseRate,
-    }
 
     try {
       let dcNumber = `DC${Date.now()}`;
