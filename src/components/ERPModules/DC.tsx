@@ -71,6 +71,16 @@ export default function DC() {
   const [showBulkInput, setShowBulkInput] = useState(false);
   const [autoSaveStatus, setAutoSaveStatus] = useState('');
 
+  // Additional states for new DC system
+  const [selectedDate, setSelectedDate] = useState<Date>(new Date());
+  const [purchaseRate, setPurchaseRate] = useState<number>(0);
+  const [cages, setCages] = useState<Cage[]>([]);
+  const [saveConfirmation, setSaveConfirmation] = useState<{
+    show: boolean;
+    dcData: any;
+    totalAmount: number;
+  }>({ show: false, dcData: null, totalAmount: 0 });
+
   useEffect(() => {
     loadData();
     // Start auto-save
@@ -151,76 +161,6 @@ export default function DC() {
     setNewVendorName('');
     setShowNewVendorForm(false);
     setShowVendorDropdown(false);
-  };
-
-  // Generate vendor code from vendor name
-  const generateVendorCode = (vendorName: string): string => {
-    const name = vendorName.toLowerCase().replace(/[^a-z]/g, '');
-    
-    // Common vendor code mappings
-    const vendorMappings: { [key: string]: string } = {
-      'suguna': 'sgn',
-      'avee': 'ave',
-      'venkateshwara': 'vnk',
-      'skylark': 'sky',
-      'godrej': 'gdr',
-      'cargill': 'car',
-      'cp': 'cp',
-      'bharath': 'bhr',
-      'srinivasa': 'sri',
-      'krishna': 'krs'
-    };
-    
-    // Check if vendor has a predefined mapping
-    if (vendorMappings[name]) {
-      return vendorMappings[name];
-    }
-    
-    // Generate code from vendor name
-    if (name.length <= 3) {
-      return name;
-    } else if (name.length <= 6) {
-      return name.substring(0, 3);
-    } else {
-      // For longer names, take first letter + consonants
-      const consonants = name.replace(/[aeiou]/g, '');
-      if (consonants.length >= 3) {
-        return consonants.substring(0, 3);
-      } else {
-        return name.substring(0, 3);
-      }
-    }
-  };
-
-  // Generate DC number with date and vendor code
-  const generateDCNumber = async (date: Date, vendorName: string): Promise<string> => {
-    const vendorCode = generateVendorCode(vendorName);
-    
-    // Format date as DDMMYY
-    const day = date.getDate().toString().padStart(2, '0');
-    const month = (date.getMonth() + 1).toString().padStart(2, '0');
-    const year = date.getFullYear().toString().slice(-2);
-    const dateCode = `${day}${month}${year}`;
-    
-    // Check for existing DCs on the same date with same vendor
-    const existingDCs = await dataService.getDeliveryChallans();
-    const sameDateDCs = existingDCs.filter(dc => {
-      const dcDate = new Date(dc.date);
-      return dcDate.toDateString() === date.toDateString() && 
-             dc.vendorName === vendorName;
-    });
-    
-    // Generate base DC number
-    const baseDCNumber = `${vendorCode}${dateCode}`;
-    
-    // If no existing DCs, return base number
-    if (sameDateDCs.length === 0) {
-      return baseDCNumber;
-    }
-    
-    // Generate sequence letter (a, b, c...)
-    const sequenceLetter = String.fromCharCode(97 + sameDateDCs.length); // 97 = 'a'
-    return `${baseDCNumber}${sequenceLetter}`;
   };
 
   // DC Functions
@@ -333,63 +273,136 @@ export default function DC() {
   };
 
   const saveDC = async () => {
-    if (!selectedVendor || !currentDC.date || !purchaseAmount) {
-      alert('Please fill all mandatory fields');
+    if (!selectedDate || !selectedVendor || purchaseRate <= 0) {
+      alert('Please fill all required fields: Date, Vendor, and Purchase Rate');
       return;
     }
 
-    // Check for duplicate date
-    const hasDuplicate = await checkForDuplicateDate(currentDC.date);
-    if (hasDuplicate && !duplicateAction) {
-      return; // Wait for user decision
+    if (cages.length === 0) {
+      alert('Please add at least one cage');
+      return;
     }
 
     try {
-      let dcNumber = await generateDCNumber(currentDC.date, selectedVendor.name);
+      const dcNumber = await generateDCNumber(selectedVendor.name, selectedDate);
       
-      if (duplicateAction === 'save-as-2') {
-        // Check for existing DCs on the same date
-        const existingDCs = await dataService.getDeliveryChallans();
-        const sameDateDCs = existingDCs.filter(dc => {
-          const dcDate = new Date(dc.date);
-          return dcDate.toDateString() === currentDC.date!.toDateString() && 
-                 dc.vendorName === selectedVendor.name;
-        });
-        
-        // Generate new DC number with suffix
-        const sequenceLetter = String.fromCharCode(97 + sameDateDCs.length);
-        dcNumber = `${dcNumber}${sequenceLetter}`;
-      } else if (duplicateAction === 'overwrite' && existingDC) {
-        await dataService.deleteDeliveryChallan(existingDC.id);
-        dcNumber = existingDC.dcNumber;
-      }
-
       const dcData = {
-        ...currentDC,
         dcNumber,
-        vendorId: selectedVendor.id,
+        date: selectedDate,
         vendorName: selectedVendor.name,
-        purchaseAmount,
-        totalAmount: calculateAutomaticTotal()
+        purchaseRate,
+        cages: cages.map(cage => ({
+          ...cage,
+          dcId: '', // Will be set after creation
+          sellingRate: 0, // Not used in new system
+          isBilled: false
+        })),
+        totalBirds: cages.reduce((sum, cage) => sum + cage.birdCount, 0),
+        totalWeight: cages.reduce((sum, cage) => sum + cage.weight, 0),
+        manualWeighing: false, // Removed feature
+        confirmed: true
       };
 
-      if (currentDC.id && duplicateAction !== 'overwrite') {
-        await dataService.updateDeliveryChallan(currentDC.id, dcData as DeliveryChallan);
-      } else {
-        const newDC = await dataService.createDeliveryChallan(dcData as Omit<DeliveryChallan, 'id' | 'createdAt' | 'updatedAt'>);
-        setCurrentDC(newDC);
-      }
-
-      // Update vendor ledger
-      await updateVendorLedger();
+      // Show save confirmation
+      setSaveConfirmation({
+        show: true,
+        dcData,
+        totalAmount: dcData.totalWeight * purchaseRate
+      });
       
+    } catch (error: any) {
+      console.error('Error preparing DC save:', error);
+      alert('Error preparing DC: ' + error.message);
+    }
+  };
+
+  const confirmSave = async () => {
+    try {
+      const newDC = await dataService.createDeliveryChallan(saveConfirmation.dcData!);
+      
+      // Reset form
+      setSelectedDate(new Date());
+      setSelectedVendor(null);
+      setVendorSearch('');
+      setPurchaseRate(0);
+      setCages([]);
+      
+      // Close confirmation dialog
+      setSaveConfirmation({ show: false, dcData: null, totalAmount: 0 });
+      
+      // Reload data
       await loadData();
-      setShowSummary(false);
-      setShowDuplicateDialog(false);
-      setDuplicateAction(null);
-      alert('DC saved successfully and vendor ledger updated!');
+      alert('DC saved successfully!');
+      
+    } catch (error: any) {
+      console.error('Error saving DC:', error);
+      alert('Error saving DC: ' + error.message);
+    }
+    
+    setSaveConfirmation({ show: false, dcData: null, totalAmount: 0 });
+  };
+
+  const generateDCNumber = async (vendorName: string, date: Date): Promise<string> => {
+    // Generate vendor code
+    const vendorCode = generateVendorCode(vendorName);
+    
+    // Format date as DDMMYY
+    const day = date.getDate().toString().padStart(2, '0');
+    const month = (date.getMonth() + 1).toString().padStart(2, '0');
+    const year = date.getFullYear().toString().slice(-2);
+    const dateCode = `${day}${month}${year}`;
+    
+    // Check for existing DCs on same date with same vendor
+    const existingDCs = deliveryChallans.filter(dc => 
+      dc.date.toDateString() === date.toDateString() &&
+      generateVendorCode(dc.vendorName) === vendorCode
+    );
+    
+    // Generate sequence letter
+    let dcNumber = `${vendorCode}${dateCode}`;
+    if (existingDCs.length > 0) {
+      const sequenceLetter = String.fromCharCode(97 + existingDCs.length); // a, b, c...
+      dcNumber += sequenceLetter;
+    }
+    
+    return dcNumber;
+  };
+
+  const generateVendorCode = (vendorName: string): string => {
+    const name = vendorName.toLowerCase().trim();
+    
+    // Predefined vendor codes
+    const vendorCodes: { [key: string]: string } = {
+      'suguna': 'sgn',
+      'venky': 'vnk',
+      'godrej': 'gdj',
+      'cp foods': 'cpf',
+      'skylark': 'sky',
+      'poultry farm': 'pf',
+      'chicken supplier': 'cs',
+      'farm fresh': 'ff',
+      'broiler farm': 'bf',
+      'live bird': 'lb'
+    };
+    
+    // Check for predefined codes
+    for (const [key, code] of Object.entries(vendorCodes)) {
+      if (name.includes(key)) {
+        return code;
+      }
+    }
+    
+    // Generate code from first 3 consonants
+    return name.replace(/[aeiou]/g, '').substring(0, 3);
+  };
+
+  const parseBulkData = (text: string) => {
+    try {
+      const result = dataService.parseBulkData(text);
+      return result;
     } catch (error) {
-      alert('Error saving DC: ' + error);
+      console.error('Error parsing bulk data:', error);
+      throw error;
     }
   };
 
@@ -1194,10 +1207,6 @@ export default function DC() {
                 <span className="text-white">{selectedVendor?.name}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-gray-400">DC Number:</span>
-                <span className="text-white">{selectedVendor && currentDC.date ? generateVendorCode(selectedVendor.name) + currentDC.date.getDate().toString().padStart(2, '0') + (currentDC.date.getMonth() + 1).toString().padStart(2, '0') + currentDC.date.getFullYear().toString().slice(-2) : ''}</span>
-              </div>
-              <div className="flex justify-between">
                 <span className="text-gray-400">Total Birds:</span>
                 <span className="text-white">{currentDC.totalBirds}</span>
               </div>
@@ -1235,6 +1244,59 @@ export default function DC() {
         </div>
       )}
 
+      {/* Save Confirmation Dialog */}
+      {saveConfirmation.show && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-[#2a2a2a] rounded-2xl p-6 w-full max-w-lg shadow-[8px_8px_16px_#0f0f0f,-8px_-8px_16px_#3a3a3a]">
+            <h3 className="text-xl font-semibold text-white mb-6">Confirm DC Save</h3>
+            
+            <div className="space-y-4 mb-6">
+              <div className="flex justify-between">
+                <span className="text-gray-400">DC Number:</span>
+                <span className="text-white">{saveConfirmation.dcData?.dcNumber}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-400">Date:</span>
+                <span className="text-white">{saveConfirmation.dcData?.date?.toLocaleDateString()}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-400">Vendor:</span>
+                <span className="text-white">{saveConfirmation.dcData?.vendorName}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-400">Total Weight:</span>
+                <span className="text-white">{saveConfirmation.dcData?.totalWeight?.toFixed(2)} kg</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-400">Purchase Rate:</span>
+                <span className="text-white">₹{saveConfirmation.dcData?.purchaseRate}/kg</span>
+              </div>
+              <div className="flex justify-between border-t border-gray-700 pt-4">
+                <span className="text-gray-400 font-medium">Total Amount:</span>
+                <span className="text-green-400 font-bold text-lg">
+                  ₹{saveConfirmation.totalAmount.toFixed(2)}
+                </span>
+              </div>
+            </div>
+            
+            <div className="flex gap-3">
+              <button
+                onClick={confirmSave}
+                className="flex-1 px-6 py-3 bg-gradient-to-r from-green-500 to-emerald-500 rounded-xl text-white font-medium"
+              >
+                Confirm & Save
+              </button>
+              <button
+                onClick={() => setSaveConfirmation({ show: false, dcData: null, totalAmount: 0 })}
+                className="flex-1 px-6 py-3 bg-gray-600 rounded-xl text-white font-medium"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* DC History */}
       <div className="bg-[#2a2a2a] rounded-2xl shadow-[8px_8px_16px_#0f0f0f,-8px_-8px_16px_#3a3a3a] overflow-hidden">
         <div className="p-6 border-b border-gray-700">
@@ -1247,7 +1309,6 @@ export default function DC() {
                 <th className="px-6 py-4 text-left text-sm font-medium text-gray-400">DC Number</th>
                 <th className="px-6 py-4 text-left text-sm font-medium text-gray-400">Date</th>
                 <th className="px-6 py-4 text-left text-sm font-medium text-gray-400">Vendor</th>
-                <th className="px-6 py-4 text-left text-sm font-medium text-gray-400">Code</th>
                 <th className="px-6 py-4 text-left text-sm font-medium text-gray-400">Weight</th>
                 <th className="px-6 py-4 text-left text-sm font-medium text-gray-400">Rate</th>
                 <th className="px-6 py-4 text-left text-sm font-medium text-gray-400">Amount</th>
@@ -1272,11 +1333,6 @@ export default function DC() {
                   </td>
                   <td className="px-6 py-4">
                     <p className="text-white">{(dc as any).vendorName || 'N/A'}</p>
-                  </td>
-                  <td className="px-6 py-4">
-                    <span className="px-2 py-1 bg-blue-500/20 text-blue-400 rounded text-xs font-mono">
-                      {generateVendorCode((dc as any).vendorName || '')}
-                    </span>
                   </td>
                   <td className="px-6 py-4">
                     <p className="text-white">{dc.totalWeight.toFixed(2)} kg</p>
