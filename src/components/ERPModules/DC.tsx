@@ -36,6 +36,8 @@ export default function DC() {
   const [isEditing, setIsEditing] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [savedVendors, setSavedVendors] = useState<Vendor[]>([]);
+  const [showBulkInput, setShowBulkInput] = useState(false);
+  const [bulkData, setBulkData] = useState('');
 
   const predefinedVendors: Vendor[] = [
     { name: 'Sagar Poultry Farm', code: 'sgr' },
@@ -158,6 +160,78 @@ export default function DC() {
     setManualWeighing(false);
     setIsEditing(false);
     setEditingId(null);
+  };
+
+  const parseBulkData = (text: string) => {
+    const lines = text.trim().split('\n');
+    const parsedCages: Omit<Cage, 'id' | 'dcId'>[] = [];
+    let detectedVendor = '';
+    
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed) continue;
+      
+      // Check if line contains vendor name (no numbers)
+      if (!/\d/.test(trimmed) && trimmed.length > 3) {
+        detectedVendor = trimmed;
+        continue;
+      }
+      
+      // Parse cage data: cageNo birdCount weight [rate]
+      const parts = trimmed.split(/\s+/);
+      if (parts.length >= 3) {
+        const cageNo = parseInt(parts[0]);
+        const birdCount = parseInt(parts[1]);
+        const weight = parseFloat(parts[2]);
+        const rate = parts[3] ? parseFloat(parts[3]) : 0;
+        
+        if (!isNaN(cageNo) && !isNaN(birdCount) && !isNaN(weight)) {
+          parsedCages.push({
+            cageNo,
+            birdCount,
+            weight,
+            sellingRate: rate,
+            isBilled: false
+          });
+        }
+      }
+    }
+    
+    return { cages: parsedCages, vendor: detectedVendor };
+  };
+
+  const applyBulkData = () => {
+    if (!bulkData.trim()) {
+      alert('Please paste some data first');
+      return;
+    }
+    
+    const { cages: parsedCages, vendor } = parseBulkData(bulkData);
+    
+    if (parsedCages.length === 0) {
+      alert('No valid cage data found. Please check the format:\nCageNo BirdCount Weight [Rate]\nExample:\n1 50 45.5 120\n2 48 42.3 120');
+      return;
+    }
+    
+    // Apply parsed data
+    setCages(parsedCages);
+    
+    // Try to find and set vendor if detected
+    if (vendor) {
+      const foundVendor = allVendors.find(v => 
+        v.name.toLowerCase().includes(vendor.toLowerCase()) ||
+        vendor.toLowerCase().includes(v.name.toLowerCase())
+      );
+      if (foundVendor) {
+        selectVendor(foundVendor);
+      } else {
+        setVendorSearch(vendor);
+      }
+    }
+    
+    setShowBulkInput(false);
+    setBulkData('');
+    alert(`Successfully imported ${parsedCages.length} cages!`);
   };
 
   const saveDC = async () => {
@@ -293,17 +367,96 @@ export default function DC() {
             <p className="text-gray-400">Manage incoming poultry deliveries</p>
           </div>
         </div>
-        <button
-          onClick={() => {
-            resetForm();
-            setShowForm(true);
-          }}
-          className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-pink-500 via-purple-500 to-cyan-500 rounded-xl text-white font-medium shadow-[0_0_20px_rgba(255,0,128,0.3)] hover:shadow-[0_0_30px_rgba(255,0,128,0.5)] transition-all duration-300"
-        >
-          <Plus className="w-5 h-5" />
-          New DC
-        </button>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => {
+              resetForm();
+              setShowForm(true);
+            }}
+            className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-pink-500 via-purple-500 to-cyan-500 rounded-xl text-white font-medium shadow-[0_0_20px_rgba(255,0,128,0.3)] hover:shadow-[0_0_30px_rgba(255,0,128,0.5)] transition-all duration-300"
+          >
+            <Plus className="w-5 h-5" />
+            New DC
+          </button>
+          <button
+            onClick={() => setShowBulkInput(true)}
+            className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-orange-500 to-red-500 rounded-xl text-white font-medium shadow-[0_0_15px_rgba(255,165,0,0.3)]"
+          >
+            <Package className="w-4 h-4" />
+            Bulk Import
+          </button>
+        </div>
       </div>
+
+      {/* Bulk Data Input Modal */}
+      {showBulkInput && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-[#2a2a2a] rounded-2xl p-6 w-full max-w-2xl shadow-[8px_8px_16px_#0f0f0f,-8px_-8px_16px_#3a3a3a]">
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-xl font-semibold text-white">Bulk Import DC Data</h3>
+              <button
+                onClick={() => setShowBulkInput(false)}
+                className="p-2 rounded-lg bg-gray-600 text-white hover:bg-gray-700 transition-colors duration-200"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <h4 className="text-white font-medium mb-2">Paste your DC data here:</h4>
+                <p className="text-gray-400 text-sm mb-3">
+                  Format: CageNo BirdCount Weight [Rate]<br/>
+                  You can also include vendor name on a separate line
+                </p>
+                <textarea
+                  value={bulkData}
+                  onChange={(e) => setBulkData(e.target.value)}
+                  placeholder={`Example format:
+Sagar Poultry Farm
+1 50 45.5 120
+2 48 42.3 120
+3 52 47.8 120
+
+Or just cage data:
+1 50 45.5
+2 48 42.3
+3 52 47.8`}
+                  className="w-full h-64 px-3 py-2 bg-[#1a1a1a] border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:border-purple-500 focus:outline-none resize-none font-mono text-sm"
+                />
+              </div>
+
+              <div className="bg-[#1a1a1a] rounded-lg p-3">
+                <h5 className="text-white font-medium mb-2">Supported Formats:</h5>
+                <ul className="text-gray-400 text-sm space-y-1">
+                  <li>• <code>CageNo BirdCount Weight</code> - Basic format</li>
+                  <li>• <code>CageNo BirdCount Weight Rate</code> - With selling rate</li>
+                  <li>• Vendor name on separate line (optional)</li>
+                  <li>• Tab or space separated values</li>
+                  <li>• Empty lines are ignored</li>
+                </ul>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-3 mt-6 pt-6 border-t border-gray-700">
+              <button
+                onClick={applyBulkData}
+                className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-green-500 to-emerald-500 rounded-xl text-white font-medium shadow-[0_0_20px_rgba(0,255,0,0.3)] hover:shadow-[0_0_30px_rgba(0,255,0,0.5)] transition-all duration-300"
+              >
+                <Package className="w-5 h-5" />
+                Import Data
+              </button>
+              
+              <button
+                onClick={() => setShowBulkInput(false)}
+                className="px-6 py-3 bg-gray-600 rounded-xl text-white font-medium hover:bg-gray-700 transition-colors duration-200"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* DC Form Modal */}
       {showForm && (
