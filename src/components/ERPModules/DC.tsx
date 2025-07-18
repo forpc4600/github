@@ -291,7 +291,7 @@ export default function DC() {
         date: selectedDate,
         vendorName: selectedVendor.name,
         purchaseRate,
-        cages: cages.map(cage => ({
+             dc.vendorName === selectedVendor?.name;
           ...cage,
           dcId: '', // Will be set after creation
           sellingRate: 0, // Not used in new system
@@ -481,6 +481,11 @@ export default function DC() {
       customerName,
       cages,
       rate: 0,
+    if (!selectedVendor) {
+      alert('Please select a vendor');
+      return;
+    }
+
       vendorPrice: 0
     }));
 
