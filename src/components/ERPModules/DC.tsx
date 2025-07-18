@@ -281,10 +281,6 @@ export default function DC() {
       const dcNumber = await generateDCNumber(selectedVendor.name, selectedDate);
       
       const dcData = {
-        dcNumber,
-        date: selectedDate,
-        vendorName: selectedVendor.name,
-        purchaseRate,
              dc.vendorName === selectedVendor?.name;
           ...cage,
           dcId: '', // Will be set after creation
