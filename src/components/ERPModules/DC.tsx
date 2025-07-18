@@ -274,13 +274,7 @@ export default function DC() {
 
   const saveDC = async () => {
     if (!selectedDate || !selectedVendor || purchaseRate <= 0) {
-      alert('Please fill all required fields: Date, Vendor, and Purchase Rate');
-      return;
-    }
-
-    if (cages.length === 0) {
-      alert('Please add at least one cage');
-      return;
+    if (!selectedDate || !selectedVendor?.name || !selectedVendor.name.trim() || purchaseRate <= 0 || cages.length === 0) {
     }
 
     try {
