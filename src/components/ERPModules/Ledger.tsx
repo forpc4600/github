@@ -9,7 +9,6 @@ export default function LedgerPanel() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editPaid, setEditPaid] = useState<number>(0);
 
-  // Load all entries on mount
   useEffect(() => {
     loadLedger();
   }, []);
@@ -48,7 +47,7 @@ export default function LedgerPanel() {
           <input
             value={filterText}
             onChange={(e) => setFilterText(e.target.value)}
-            placeholder="Search by vendor/customer..."
+            placeholder="Search by vendor or customer..."
             className="pl-10 pr-4 py-2 rounded-xl bg-[#1a1a1a] border border-gray-700 text-white placeholder-gray-400"
           />
         </div>
@@ -123,7 +122,7 @@ export default function LedgerPanel() {
                   colSpan={7}
                   className="p-6 text-center text-gray-400 italic"
                 >
-                  No entries yet.
+                  No ledger entries found.
                 </td>
               </tr>
             )}
