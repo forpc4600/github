@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import {
-  Truck, Plus, Search, Edit, Trash2, Save, Calendar, User, Package, DollarSign, CheckCircle
+  Truck, Plus, Search, Edit, Trash2, Save,
+  Calendar, User, Package, DollarSign, CheckCircle
 } from 'lucide-react';
 import { dataService } from '../../services/dataService';
 import { DeliveryChallan, Cage } from '../../types/erp';
@@ -115,13 +116,19 @@ export default function DC() {
   };
 
   const parseBulkData = () => {
+    if (!bulkData.trim()) {
+      alert("Please paste some data first");
+      return;
+    }
+
     const lines = bulkData.trim().split('\n');
     const parsed: Omit<Cage, 'id' | 'dcId'>[] = [];
+
     lines.forEach(line => {
       const parts = line.trim().split(/\s+/);
       if (parts.length >= 3) {
         parsed.push({
-          cageNo: parseInt(parts[0]),
+          cageNo: cages.length + parsed.length + 1,
           birdCount: parseInt(parts[1]),
           weight: parseFloat(parts[2]),
           sellingRate: parts[3] ? parseFloat(parts[3]) : 0,
@@ -129,8 +136,10 @@ export default function DC() {
         });
       }
     });
+
     if (parsed.length > 0) {
-      setCages(parsed);
+      setCages(prev => [...prev, ...parsed]);
+      setShowForm(true);  // ensure form is open
       setShowBulkInput(false);
       setBulkData('');
     } else {
@@ -183,7 +192,6 @@ export default function DC() {
     setShowForm(false);
     alert('✅ Saved successfully!');
   };
-
   const editDC = (dc: DeliveryChallan) => {
     setSelectedDate(new Date(dc.date).toISOString().split('T')[0]);
     setSelectedVendor({ name: dc.vendorName, code: dc.dcNumber.replace(/^\d{1,2}-\d{1,2}-\d{2}/, '') });
@@ -230,7 +238,11 @@ export default function DC() {
         </div>
         <div className="flex gap-3">
           <button
-            onClick={() => setShowBulkInput(true)}
+            onClick={() => {
+              resetForm();
+              setShowForm(true);
+              setShowBulkInput(true);
+            }}
             className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-orange-500 to-red-500 rounded-xl text-white font-medium shadow-[0_0_15px_rgba(255,165,0,0.3)]"
           >
             Bulk Import
@@ -263,17 +275,14 @@ export default function DC() {
         </div>
       )}
 
-      {/* Form Modal */}
+      {/* DC Form */}
       {showForm && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
           <div className="bg-[#2a2a2a] rounded-2xl p-6 w-full max-w-4xl max-h-[90vh] overflow-y-auto">
-            {/* Inputs */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
               <div>
                 <label className="text-white text-sm">Date</label>
-                <input type="date" value={selectedDate}
-                  onChange={e => setSelectedDate(e.target.value)}
-                  className="w-full p-2 rounded bg-[#0f0f0f] text-white" />
+                <input type="date" value={selectedDate} onChange={e => setSelectedDate(e.target.value)} className="w-full p-2 rounded bg-[#0f0f0f] text-white" />
               </div>
               <div>
                 <label className="text-white text-sm">Vendor</label>
@@ -292,36 +301,26 @@ export default function DC() {
                 />
                 <div className="max-h-24 overflow-y-auto mt-1">
                   {filteredVendors.map(v => (
-                    <button key={v.name}
-                      onClick={() => selectVendor(v)}
-                      className={`block w-full text-left p-1 rounded ${selectedVendor?.name === v.name ? 'bg-purple-500/30' : 'hover:bg-[#3a3a3a]'}`}>
-                      {v.name}
-                    </button>
+                    <button key={v.name} onClick={() => selectVendor(v)} className={`block w-full text-left p-1 rounded ${selectedVendor?.name === v.name ? 'bg-purple-500/30' : 'hover:bg-[#3a3a3a]'}`}>{v.name}</button>
                   ))}
                 </div>
                 {vendorSearch && !filteredVendors.find(v => v.name.toLowerCase() === vendorSearch.toLowerCase()) && (
-                  <button
-                    onClick={() => {
-                      const newVendor: Vendor = { name: vendorSearch.trim(), code: vendorSearch.trim().slice(0,3).toLowerCase() };
-                      selectVendor(newVendor);
-                    }}
-                    className="mt-2 px-3 py-1 bg-green-500/30 text-green-200 rounded hover:bg-green-500/50"
-                  >
+                  <button onClick={() => {
+                    const newVendor: Vendor = { name: vendorSearch.trim(), code: vendorSearch.trim().slice(0,3).toLowerCase() };
+                    selectVendor(newVendor);
+                  }} className="mt-2 px-3 py-1 bg-green-500/30 text-green-200 rounded hover:bg-green-500/50">
                     + Add "{vendorSearch}"
                   </button>
                 )}
               </div>
               <div>
                 <label className="text-white text-sm">Purchase Rate</label>
-                <input type="number" value={purchaseRate}
-                  onChange={e => setPurchaseRate(parseFloat(e.target.value))}
-                  className="w-full p-2 rounded bg-[#0f0f0f] text-white" />
+                <input type="number" value={purchaseRate} onChange={e => setPurchaseRate(parseFloat(e.target.value))} className="w-full p-2 rounded bg-[#0f0f0f] text-white" />
               </div>
             </div>
 
             <div className="text-green-400 font-mono mb-4">{generateDCNumber()}</div>
 
-            {/* Cages Table */}
             <table className="w-full text-white">
               <thead>
                 <tr className="bg-[#1a1a1a]">
@@ -335,47 +334,24 @@ export default function DC() {
                 {cages.map((c, i) => (
                   <tr key={i} className="bg-[#0f0f0f]">
                     <td className="p-2">{c.cageNo}</td>
-                    <td className="p-2">
-                      <input type="number" value={c.birdCount}
-                        onChange={e => updateCell(i, 'birdCount', parseInt(e.target.value) || 0)}
-                        className="w-full p-1 rounded bg-[#2a2a2a] text-white" />
-                    </td>
-                    <td className="p-2">
-                      <input type="number" value={c.weight}
-                        onChange={e => updateCell(i, 'weight', parseFloat(e.target.value) || 0)}
-                        className="w-full p-1 rounded bg-[#2a2a2a] text-white" />
-                    </td>
-                    <td className="p-2">
-                      <button onClick={() => removeRow(i)} className="text-red-400"><Trash2 className="w-4 h-4" /></button>
-                    </td>
+                    <td className="p-2"><input type="number" value={c.birdCount} onChange={e => updateCell(i, 'birdCount', parseInt(e.target.value) || 0)} className="w-full p-1 rounded bg-[#2a2a2a] text-white" /></td>
+                    <td className="p-2"><input type="number" value={c.weight} onChange={e => updateCell(i, 'weight', parseFloat(e.target.value) || 0)} className="w-full p-1 rounded bg-[#2a2a2a] text-white" /></td>
+                    <td className="p-2"><button onClick={() => removeRow(i)} className="text-red-400"><Trash2 className="w-4 h-4" /></button></td>
                   </tr>
                 ))}
               </tbody>
             </table>
-            <button onClick={addRow}
-              className="mt-3 px-3 py-1 bg-blue-500/20 text-blue-400 rounded-lg hover:bg-blue-500/30">
-              + Add Row
-            </button>
+            <button onClick={addRow} className="mt-3 px-3 py-1 bg-blue-500/20 text-blue-400 rounded-lg hover:bg-blue-500/30">+ Add Row</button>
 
-                      {/* Totals */}
             <div className="mt-4 text-white">
               Total Birds: {birds} | Total Weight: {weight.toFixed(1)} kg
             </div>
 
-            {/* Actions */}
             <div className="mt-4 flex gap-3">
-              <button
-                onClick={saveDC}
-                className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-green-500 to-emerald-500 rounded-xl text-white"
-              >
+              <button onClick={saveDC} className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-green-500 to-emerald-500 rounded-xl text-white">
                 <Save className="w-5 h-5" /> {isEditing ? 'Update DC' : 'Save DC'}
               </button>
-              <button
-                onClick={() => setShowForm(false)}
-                className="px-6 py-3 bg-gray-600 rounded-xl text-white"
-              >
-                Cancel
-              </button>
+              <button onClick={() => setShowForm(false)} className="px-6 py-3 bg-gray-600 rounded-xl text-white">Cancel</button>
             </div>
           </div>
         </div>
@@ -383,9 +359,7 @@ export default function DC() {
 
       {/* DC list */}
       <div className="bg-[#2a2a2a] rounded-2xl overflow-hidden">
-        <div className="p-4 border-b border-gray-700 text-white font-semibold">
-          Last 30 Delivery Challans
-        </div>
+        <div className="p-4 border-b border-gray-700 text-white font-semibold">Last 30 Delivery Challans</div>
         <table className="w-full text-white">
           <thead className="bg-[#1a1a1a]">
             <tr>
@@ -400,13 +374,7 @@ export default function DC() {
           </thead>
           <tbody>
             {deliveryChallans.map((dc, idx) => (
-              <motion.tr
-                key={dc.id}
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: idx * 0.05 }}
-                className="hover:bg-[#1a1a1a]"
-              >
+              <motion.tr key={dc.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: idx * 0.05 }}>
                 <td className="p-2">{dc.dcNumber}</td>
                 <td className="p-2">{new Date(dc.date).toLocaleDateString()}</td>
                 <td className="p-2">{dc.vendorName}</td>
@@ -415,23 +383,14 @@ export default function DC() {
                 <td className="p-2">₹{dc.purchaseRate}</td>
                 <td className="p-2 flex gap-2">
                   {!dc.confirmed && (
-                    <button
-                      onClick={() => confirmDC(dc.id)}
-                      className="p-1 bg-green-500/20 rounded hover:bg-green-500/40"
-                    >
+                    <button onClick={() => confirmDC(dc.id)} className="p-1 bg-green-500/20 rounded hover:bg-green-500/40">
                       <CheckCircle className="w-4 h-4 text-green-400" />
                     </button>
                   )}
-                  <button
-                    onClick={() => editDC(dc)}
-                    className="p-1 bg-blue-500/20 rounded hover:bg-blue-500/40"
-                  >
+                  <button onClick={() => editDC(dc)} className="p-1 bg-blue-500/20 rounded hover:bg-blue-500/40">
                     <Edit className="w-4 h-4 text-blue-400" />
                   </button>
-                  <button
-                    onClick={() => deleteDC(dc.id)}
-                    className="p-1 bg-red-500/20 rounded hover:bg-red-500/40"
-                  >
+                  <button onClick={() => deleteDC(dc.id)} className="p-1 bg-red-500/20 rounded hover:bg-red-500/40">
                     <Trash2 className="w-4 h-4 text-red-400" />
                   </button>
                 </td>
@@ -443,4 +402,3 @@ export default function DC() {
     </div>
   );
 }
-
