@@ -101,30 +101,6 @@ class DataService {
     data.deliveryChallans.push(newDC);
     this.saveData(data);
 
-    // ✅ Ask how much paid to vendor
-    const totalAmount = newDC.totalWeight * newDC.purchaseRate;
-    const paidStr = window.prompt(
-      `Vendor "${newDC.vendorName}"\nTotal: ₹${totalAmount.toFixed(2)}\nEnter how much paid now:`,
-      "0"
-    );
-    const paid = paidStr ? parseFloat(paidStr) : 0;
-    const due = totalAmount - paid;
-
-    // ✅ Create ledger entry
-    await this.createLedgerEntry({
-      customerId: newDC.vendorName,
-      customerName: newDC.vendorName,
-      type: 'purchase',
-      amount: totalAmount,
-      balance: due,
-      description: `DC ${newDC.dcNumber} - ${newDC.totalBirds} birds, ${newDC.totalWeight}kg`,
-      referenceId: newDC.id,
-      date: newDC.date,
-      paid,
-      due,
-      paidMode: 'cash'
-    });
-
     return newDC;
   }
 

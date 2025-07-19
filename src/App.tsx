@@ -29,15 +29,9 @@ import Products from './components/ERPModules/Products';
 import Invoices from './components/ERPModules/Invoices';
 import DC from './components/ERPModules/DC';
 import InvoicePanel from './components/ERPModules/InvoicePanel';
+import Ledger from './components/ERPModules/Ledger';
 
 // Placeholder components for remaining modules
-const LedgerPanel = () => (
-  <div className="bg-[#2a2a2a] rounded-2xl p-6 shadow-[8px_8px_16px_#0f0f0f,-8px_-8px_16px_#3a3a3a]">
-    <h2 className="text-2xl font-bold text-white mb-4">Customer Ledger</h2>
-    <p className="text-gray-400">Customer history, payments, dues, and balance tracking will be implemented here.</p>
-  </div>
-);
-
 const ProfitLossPanel = () => (
   <div className="bg-[#2a2a2a] rounded-2xl p-6 shadow-[8px_8px_16px_#0f0f0f,-8px_-8px_16px_#3a3a3a]">
     <h2 className="text-2xl font-bold text-white mb-4">Profit & Loss</h2>
@@ -85,7 +79,7 @@ export default function ERPApp() {
     { name: 'Dashboard', icon: <Home className="w-5 h-5" />, component: Dashboard },
     { name: 'DC', icon: <Truck className="w-5 h-5" />, component: DC },
     { name: 'Invoice Panel', icon: <FileText className="w-5 h-5" />, component: InvoicePanel },
-    { name: 'Customer Ledger', icon: <BookOpen className="w-5 h-5" />, component: LedgerPanel },
+    { name: 'Customer Ledger', icon: <BookOpen className="w-5 h-5" />, component: Ledger },
     { name: 'Profit & Loss', icon: <TrendingUp className="w-5 h-5" />, component: ProfitLossPanel },
     { name: 'Cash Flow', icon: <Wallet className="w-5 h-5" />, component: CashFlowPanel },
     { name: 'AI Assistant', icon: <Bot className="w-5 h-5" />, component: AIAssistantPanel },
