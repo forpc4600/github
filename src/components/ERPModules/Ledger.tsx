@@ -61,14 +61,13 @@ export default function Ledger() {
   const startEdit = (entry: LedgerEntry) => {
     setEditingId(entry.id);
     setEditData({
-      paid: 0, // Start with 0 for additional payment
+      paid: 0,
       description: entry.description
     });
   };
 
   const saveEdit = async () => {
     if (!editingId) return;
-
     try {
       const entry = ledgerEntries.find(e => e.id === editingId);
       if (!entry) return;
@@ -81,13 +80,13 @@ export default function Ledger() {
         description: editData.description || entry.description
       });
 
-      // If payment made, create a new payment entry
+      // Also add a payment record
       if (additionalPayment > 0) {
         await dataService.createLedgerEntry({
           customerId: entry.customerId,
           customerName: entry.customerName,
           type: 'payment',
-          amount: -additionalPayment, // Negative for payment
+          amount: -additionalPayment,
           balance: Math.max(0, newBalance),
           description: `Payment received - ${editData.description || 'Manual payment'}`,
           referenceId: entry.referenceId,
@@ -176,6 +175,7 @@ export default function Ledger() {
 
       {/* Summary Cards */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+        {/* ... existing summary cards remain unchanged ... */}
         <div className="bg-[#2a2a2a] rounded-2xl p-6 shadow-[8px_8px_16px_#0f0f0f,-8px_-8px_16px_#3a3a3a]">
           <div className="flex items-center gap-3 mb-2">
             <TrendingUp className="w-5 h-5 text-red-400" />
@@ -220,6 +220,8 @@ export default function Ledger() {
                 <th className="px-6 py-4 text-left text-sm font-medium text-gray-400">Type</th>
                 <th className="px-6 py-4 text-left text-sm font-medium text-gray-400">Description</th>
                 <th className="px-6 py-4 text-left text-sm font-medium text-gray-400">Amount</th>
+                {/* NEW PAID COLUMN */}
+                <th className="px-6 py-4 text-left text-sm font-medium text-gray-400">Paid</th>
                 <th className="px-6 py-4 text-left text-sm font-medium text-gray-400">Balance</th>
                 <th className="px-6 py-4 text-left text-sm font-medium text-gray-400">Actions</th>
               </tr>
@@ -267,6 +269,23 @@ export default function Ledger() {
                       ₹{Math.abs(entry.amount).toLocaleString()}
                     </span>
                   </td>
+                  {/* PAID CELL */}
+                  <td className="px-6 py-4">
+                    {editingId === entry.id ? (
+                      <input
+                        type="number"
+                        step="0.01"
+                        placeholder="Paid"
+                        value={editData.paid || ''}
+                        onChange={(e) => setEditData({ ...editData, paid: parseFloat(e.target.value) || 0 })}
+                        className="w-24 px-2 py-1 bg-[#1a1a1a] border border-gray-600 rounded text-white text-sm focus:border-purple-500 focus:outline-none"
+                      />
+                    ) : (
+                      <span className="text-green-400">
+                        {entry.type === 'payment' ? `₹${Math.abs(entry.amount).toLocaleString()}` : '-'}
+                      </span>
+                    )}
+                  </td>
                   <td className="px-6 py-4">
                     <span className={`font-medium ${entry.balance > 0 ? 'text-red-400' : 'text-green-400'}`}>
                       ₹{entry.balance.toLocaleString()}
@@ -275,14 +294,6 @@ export default function Ledger() {
                   <td className="px-6 py-4">
                     {editingId === entry.id ? (
                       <div className="flex items-center gap-2">
-                        <input
-                          type="number"
-                          step="0.01"
-                          placeholder="Payment amount"
-                          value={editData.paid || ''}
-                          onChange={(e) => setEditData({ ...editData, paid: parseFloat(e.target.value) || 0 })}
-                          className="w-24 px-2 py-1 bg-[#1a1a1a] border border-gray-600 rounded text-white text-sm focus:border-purple-500 focus:outline-none"
-                        />
                         <button
                           onClick={saveEdit}
                           className="p-2 rounded-lg bg-green-500/20 text-green-400 hover:bg-green-500/30 transition-colors duration-200"
@@ -310,7 +321,7 @@ export default function Ledger() {
               ))}
             </tbody>
           </table>
-          
+
           {filteredEntries.length === 0 && (
             <div className="p-8 text-center">
               <BookOpen className="w-12 h-12 text-gray-600 mx-auto mb-4" />
