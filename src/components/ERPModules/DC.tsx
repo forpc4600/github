@@ -15,6 +15,9 @@ interface Vendor {
 export default function DC() {
   const [deliveryChallans, setDeliveryChallans] = useState<DeliveryChallan[]>([]);
   const [showForm, setShowForm] = useState(false);
+  const [showBulkInput, setShowBulkInput] = useState(false);
+  const [bulkData, setBulkData] = useState('');
+
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
   const [selectedVendor, setSelectedVendor] = useState<Vendor | null>(null);
   const [vendorSearch, setVendorSearch] = useState('');
@@ -22,6 +25,7 @@ export default function DC() {
   const [cages, setCages] = useState<Omit<Cage, 'id' | 'dcId'>[]>([]);
   const [isEditing, setIsEditing] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+
   const [savedVendors, setSavedVendors] = useState<Vendor[]>([]);
 
   const predefinedVendors: Vendor[] = [
@@ -38,8 +42,15 @@ export default function DC() {
 
   const loadData = async () => {
     const list = await dataService.getDeliveryChallans();
-    // only show last 30
     setDeliveryChallans(list.slice(-30).reverse());
+  };
+
+  const saveVendor = (vendor: Vendor) => {
+    if (!savedVendors.find(v => v.name === vendor.name)) {
+      const updated = [...savedVendors, { ...vendor, saved: true }];
+      setSavedVendors(updated);
+      localStorage.setItem('saved_vendors', JSON.stringify(updated));
+    }
   };
 
   const allVendors = [
@@ -50,14 +61,6 @@ export default function DC() {
   const filteredVendors = allVendors.filter(v =>
     v.name.toLowerCase().includes(vendorSearch.toLowerCase())
   );
-
-  const saveVendor = (vendor: Vendor) => {
-    if (!savedVendors.find(v => v.name === vendor.name)) {
-      const updated = [...savedVendors, { ...vendor, saved: true }];
-      setSavedVendors(updated);
-      localStorage.setItem('saved_vendors', JSON.stringify(updated));
-    }
-  };
 
   const selectVendor = (v: Vendor) => {
     setSelectedVendor(v);
@@ -111,6 +114,30 @@ export default function DC() {
     setEditingId(null);
   };
 
+  const parseBulkData = () => {
+    const lines = bulkData.trim().split('\n');
+    const parsed: Omit<Cage, 'id' | 'dcId'>[] = [];
+    lines.forEach(line => {
+      const parts = line.trim().split(/\s+/);
+      if (parts.length >= 3) {
+        parsed.push({
+          cageNo: parseInt(parts[0]),
+          birdCount: parseInt(parts[1]),
+          weight: parseFloat(parts[2]),
+          sellingRate: parts[3] ? parseFloat(parts[3]) : 0,
+          isBilled: false
+        });
+      }
+    });
+    if (parsed.length > 0) {
+      setCages(parsed);
+      setShowBulkInput(false);
+      setBulkData('');
+    } else {
+      alert('No valid cage data found!');
+    }
+  };
+
   const saveDC = async () => {
     if (!selectedVendor) return alert('Vendor required');
     if (purchaseRate <= 0) return alert('Rate required');
@@ -118,8 +145,8 @@ export default function DC() {
     if (cages.length === 0) return alert('Add at least one row');
     if (cages.some(c => c.birdCount <= 0 || c.weight <= 0)) return alert('All rows need valid values');
 
-    const dcNumber = generateDCNumber();
     const { birds, weight } = calcTotals();
+    const dcNumber = generateDCNumber();
 
     const dcData: DeliveryChallan = {
       id: editingId || `dc_${Date.now()}`,
@@ -140,7 +167,6 @@ export default function DC() {
       await dataService.createDeliveryChallan(dcData);
     }
 
-    // ledger entry
     if (dataService.addLedgerEntry) {
       await dataService.addLedgerEntry({
         date: selectedDate,
@@ -202,19 +228,46 @@ export default function DC() {
             <p className="text-gray-400">Manage incoming poultry deliveries</p>
           </div>
         </div>
-        <button
-          onClick={() => { resetForm(); setShowForm(true); }}
-          className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-pink-500 via-purple-500 to-cyan-500 rounded-xl text-white font-medium shadow-[0_0_20px_rgba(255,0,128,0.3)]"
-        >
-          <Plus className="w-5 h-5" /> New DC
-        </button>
+        <div className="flex gap-3">
+          <button
+            onClick={() => setShowBulkInput(true)}
+            className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-orange-500 to-red-500 rounded-xl text-white font-medium shadow-[0_0_15px_rgba(255,165,0,0.3)]"
+          >
+            Bulk Import
+          </button>
+          <button
+            onClick={() => { resetForm(); setShowForm(true); }}
+            className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-pink-500 via-purple-500 to-cyan-500 rounded-xl text-white font-medium shadow-[0_0_20px_rgba(255,0,128,0.3)]"
+          >
+            <Plus className="w-5 h-5" /> New DC
+          </button>
+        </div>
       </div>
+
+      {/* Bulk Import Modal */}
+      {showBulkInput && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+          <div className="bg-[#2a2a2a] rounded-2xl p-6 w-full max-w-2xl shadow-lg">
+            <h3 className="text-xl font-semibold text-white mb-4">Bulk Import DC Data</h3>
+            <textarea
+              value={bulkData}
+              onChange={(e) => setBulkData(e.target.value)}
+              placeholder={`CageNo BirdCount Weight [Rate]\n1 50 45.5\n2 48 42.3`}
+              className="w-full h-64 px-3 py-2 bg-[#1a1a1a] border border-gray-600 rounded-lg text-white font-mono text-sm"
+            />
+            <div className="flex gap-3 mt-4">
+              <button onClick={parseBulkData} className="px-4 py-2 bg-green-500 text-white rounded">Import</button>
+              <button onClick={() => setShowBulkInput(false)} className="px-4 py-2 bg-gray-500 text-white rounded">Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Form Modal */}
       {showForm && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
           <div className="bg-[#2a2a2a] rounded-2xl p-6 w-full max-w-4xl max-h-[90vh] overflow-y-auto">
-            {/* Vendor & Inputs */}
+            {/* Inputs */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
               <div>
                 <label className="text-white text-sm">Date</label>
@@ -224,18 +277,39 @@ export default function DC() {
               </div>
               <div>
                 <label className="text-white text-sm">Vendor</label>
-                <input type="text" value={vendorSearch}
+                <input
+                  type="text"
+                  value={vendorSearch}
                   onChange={e => setVendorSearch(e.target.value)}
-                  placeholder="Search vendor"
-                  className="w-full p-2 rounded bg-[#0f0f0f] text-white" />
-                <div className="max-h-24 overflow-y-auto">
+                  placeholder="Search or add vendor..."
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && vendorSearch.trim()) {
+                      const newVendor: Vendor = { name: vendorSearch.trim(), code: vendorSearch.trim().slice(0,3).toLowerCase() };
+                      selectVendor(newVendor);
+                    }
+                  }}
+                  className="w-full p-2 rounded bg-[#0f0f0f] text-white"
+                />
+                <div className="max-h-24 overflow-y-auto mt-1">
                   {filteredVendors.map(v => (
-                    <button key={v.name} onClick={() => selectVendor(v)}
+                    <button key={v.name}
+                      onClick={() => selectVendor(v)}
                       className={`block w-full text-left p-1 rounded ${selectedVendor?.name === v.name ? 'bg-purple-500/30' : 'hover:bg-[#3a3a3a]'}`}>
                       {v.name}
                     </button>
                   ))}
                 </div>
+                {vendorSearch && !filteredVendors.find(v => v.name.toLowerCase() === vendorSearch.toLowerCase()) && (
+                  <button
+                    onClick={() => {
+                      const newVendor: Vendor = { name: vendorSearch.trim(), code: vendorSearch.trim().slice(0,3).toLowerCase() };
+                      selectVendor(newVendor);
+                    }}
+                    className="mt-2 px-3 py-1 bg-green-500/30 text-green-200 rounded hover:bg-green-500/50"
+                  >
+                    + Add "{vendorSearch}"
+                  </button>
+                )}
               </div>
               <div>
                 <label className="text-white text-sm">Purchase Rate</label>
@@ -247,100 +321,41 @@ export default function DC() {
 
             <div className="text-green-400 font-mono mb-4">{generateDCNumber()}</div>
 
-            {/* Excel-like Cage Table */}
-            <div className="overflow-x-auto">
-              <table className="w-full text-white">
-                <thead>
-                  <tr className="bg-[#1a1a1a]">
-                    <th className="p-2">Cage No</th>
-                    <th className="p-2">Bird Count</th>
-                    <th className="p-2">Weight</th>
-                    <th className="p-2"></th>
+            {/* Cages Table */}
+            <table className="w-full text-white">
+              <thead>
+                <tr className="bg-[#1a1a1a]">
+                  <th className="p-2">Cage No</th>
+                  <th className="p-2">Bird Count</th>
+                  <th className="p-2">Weight</th>
+                  <th className="p-2"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {cages.map((c, i) => (
+                  <tr key={i} className="bg-[#0f0f0f]">
+                    <td className="p-2">{c.cageNo}</td>
+                    <td className="p-2">
+                      <input type="number" value={c.birdCount}
+                        onChange={e => updateCell(i, 'birdCount', parseInt(e.target.value) || 0)}
+                        className="w-full p-1 rounded bg-[#2a2a2a] text-white" />
+                    </td>
+                    <td className="p-2">
+                      <input type="number" value={c.weight}
+                        onChange={e => updateCell(i, 'weight', parseFloat(e.target.value) || 0)}
+                        className="w-full p-1 rounded bg-[#2a2a2a] text-white" />
+                    </td>
+                    <td className="p-2">
+                      <button onClick={() => removeRow(i)} className="text-red-400"><Trash2 className="w-4 h-4" /></button>
+                    </td>
                   </tr>
-                </thead>
-                <tbody>
-                  {cages.map((c, i) => (
-                    <tr key={i} className="bg-[#0f0f0f]">
-                      <td className="p-2">{c.cageNo}</td>
-                      <td className="p-2">
-                        <input type="number" value={c.birdCount}
-                          onChange={e => updateCell(i, 'birdCount', parseInt(e.target.value) || 0)}
-                          className="w-full p-1 rounded bg-[#2a2a2a] text-white" />
-                      </td>
-                      <td className="p-2">
-                        <input type="number" value={c.weight}
-                          onChange={e => updateCell(i, 'weight', parseFloat(e.target.value) || 0)}
-                          className="w-full p-1 rounded bg-[#2a2a2a] text-white" />
-                      </td>
-                      <td className="p-2">
-                        <button onClick={() => removeRow(i)} className="text-red-400"><Trash2 className="w-4 h-4" /></button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              <button onClick={addRow}
-                className="mt-3 px-3 py-1 bg-blue-500/20 text-blue-400 rounded-lg hover:bg-blue-500/30">
-                + Add Row
-              </button>
-            </div>
+                ))}
+              </tbody>
+            </table>
+            <button onClick={addRow}
+              className="mt-3 px-3 py-1 bg-blue-500/20 text-blue-400 rounded-lg hover:bg-blue-500/30">
+              + Add Row
+            </button>
 
             {/* Totals */}
-            <div className="mt-4 text-white">
-              Total Birds: {birds} | Total Weight: {weight.toFixed(1)} kg
-            </div>
-
-            {/* Actions */}
-            <div className="mt-4 flex gap-3">
-              <button onClick={saveDC}
-                className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-green-500 to-emerald-500 rounded-xl text-white">
-                <Save className="w-5 h-5" /> {isEditing ? 'Update DC' : 'Save DC'}
-              </button>
-              <button onClick={() => setShowForm(false)}
-                className="px-6 py-3 bg-gray-600 rounded-xl text-white">Cancel</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* DC list (last 30) */}
-      <div className="bg-[#2a2a2a] rounded-2xl overflow-hidden">
-        <div className="p-4 border-b border-gray-700 text-white font-semibold">Last 30 Delivery Challans</div>
-        <table className="w-full text-white">
-          <thead className="bg-[#1a1a1a]">
-            <tr>
-              <th className="p-2">DC Number</th>
-              <th className="p-2">Date</th>
-              <th className="p-2">Vendor</th>
-              <th className="p-2">Birds</th>
-              <th className="p-2">Weight</th>
-              <th className="p-2">Rate</th>
-              <th className="p-2">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {deliveryChallans.map((dc, idx) => (
-              <motion.tr key={dc.id}
-                initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: idx * 0.05 }}>
-                <td className="p-2">{dc.dcNumber}</td>
-                <td className="p-2">{new Date(dc.date).toLocaleDateString()}</td>
-                <td className="p-2">{dc.vendorName}</td>
-                <td className="p-2">{dc.totalBirds}</td>
-                <td className="p-2">{dc.totalWeight.toFixed(1)}</td>
-                <td className="p-2">₹{dc.purchaseRate}</td>
-                <td className="p-2 flex gap-2">
-                  <button onClick={() => editDC(dc)} className="text-blue-400"><Edit className="w-4 h-4" /></button>
-                  <button onClick={() => deleteDC(dc.id)} className="text-red-400"><Trash2 className="w-4 h-4" /></button>
-                  {!dc.confirmed && (
-                    <button onClick={() => confirmDC(dc.id)} className="text-green-400"><CheckCircle className="w-4 h-4" /></button>
-                  )}
-                </td>
-              </motion.tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  );
-}
+            <div className
