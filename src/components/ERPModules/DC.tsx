@@ -1,8 +1,17 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import {
-  Truck, Plus, Search, Edit, Trash2, Save,
-  Calendar, User, Package, DollarSign, CheckCircle
+  Truck,
+  Plus,
+  Search,
+  Edit,
+  Trash2,
+  Save,
+  Calendar,
+  User,
+  Package,
+  DollarSign,
+  CheckCircle
 } from 'lucide-react';
 import { dataService } from '../../services/dataService';
 import { DeliveryChallan, Cage } from '../../types/erp';
@@ -16,119 +25,78 @@ interface Vendor {
 export default function DC() {
   const [deliveryChallans, setDeliveryChallans] = useState<DeliveryChallan[]>([]);
   const [showForm, setShowForm] = useState(false);
-  const [showBulkInput, setShowBulkInput] = useState(false);
-  const [bulkData, setBulkData] = useState('');
-
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
   const [selectedVendor, setSelectedVendor] = useState<Vendor | null>(null);
   const [vendorSearch, setVendorSearch] = useState('');
   const [purchaseRate, setPurchaseRate] = useState<number>(0);
   const [cages, setCages] = useState<Omit<Cage, 'id' | 'dcId'>[]>([]);
-  const [isEditing, setIsEditing] = useState(false);
-  const [editingId, setEditingId] = useState<string | null>(null);
-
-  const [savedVendors, setSavedVendors] = useState<Vendor[]>([]);
+  const [manualWeighing, setManualWeighing] = useState(false);
+  const [bulkData, setBulkData] = useState('');
+  const [previousDue, setPreviousDue] = useState<number>(0); // <-- NEW
 
   const predefinedVendors: Vendor[] = [
     { name: 'Sagar Poultry Farm', code: 'sgr' },
-    { name: 'Suguna', code: 'sgn' },
-    { name: 'Krishna Chicken Center', code: 'kcc' }
+    { name: 'Krishna Chicken Center', code: 'kcc' },
+    { name: 'Balaji Poultry', code: 'blj' },
+    { name: 'Shree Ganesh Farm', code: 'sgf' },
+    { name: 'Radha Krishna Poultry', code: 'rkp' }
   ];
 
   useEffect(() => {
     loadData();
-    const saved = localStorage.getItem('saved_vendors');
-    if (saved) setSavedVendors(JSON.parse(saved));
   }, []);
 
   const loadData = async () => {
-    const list = await dataService.getDeliveryChallans();
-    setDeliveryChallans(list.slice(-30).reverse());
+    const dcList = await dataService.getDeliveryChallans();
+    setDeliveryChallans(dcList);
   };
 
-  const saveVendor = (vendor: Vendor) => {
-    if (!savedVendors.find(v => v.name === vendor.name)) {
-      const updated = [...savedVendors, { ...vendor, saved: true }];
-      setSavedVendors(updated);
-      localStorage.setItem('saved_vendors', JSON.stringify(updated));
+  const filteredVendors = predefinedVendors.filter(vendor =>
+    vendor.name.toLowerCase().includes(vendorSearch.toLowerCase())
+  );
+
+  const selectVendor = async (vendor: Vendor) => {
+    setSelectedVendor(vendor);
+    setVendorSearch(vendor.name);
+
+    // fetch previous due from ledger
+    const ledger = await dataService.getLedgerEntries();
+    const vendorRows = ledger.filter((e: any) => e.type === 'DC' && e.name === vendor.name);
+    if (vendorRows.length > 0) {
+      const lastRow = vendorRows[vendorRows.length - 1];
+      setPreviousDue(lastRow.due || 0);
+    } else {
+      setPreviousDue(0);
     }
   };
 
-  const allVendors = [
-    ...savedVendors.map(v => ({ ...v, saved: true })),
-    ...predefinedVendors.filter(pv => !savedVendors.some(sv => sv.name === pv.name))
-  ];
-
-  const filteredVendors = allVendors.filter(v =>
-    v.name.toLowerCase().includes(vendorSearch.toLowerCase())
-  );
-
-  const selectVendor = (v: Vendor) => {
-    setSelectedVendor(v);
-    setVendorSearch(v.name);
-    saveVendor(v);
+  const addCage = () => {
+    setCages([
+      ...cages,
+      {
+        cageNo: cages.length + 1,
+        birdCount: 0,
+        weight: 0,
+        sellingRate: 0,
+        isBilled: false
+      }
+    ]);
   };
 
-  const generateDCNumber = () => {
-    if (!selectedVendor || !selectedDate) return '';
-    const date = new Date(selectedDate);
-    const day = date.getDate();
-    const month = date.getMonth() + 1;
-    const year = String(date.getFullYear()).slice(-2);
-    const prefix = `${day}-${month}-${year}${selectedVendor.code}`;
-    const sameDay = deliveryChallans.filter(dc => {
-      const d = new Date(dc.date);
-      return dc.vendorName === selectedVendor.name &&
-        d.getDate() === date.getDate() &&
-        d.getMonth() === date.getMonth() &&
-        d.getFullYear() === date.getFullYear();
-    });
-    const seq = sameDay.length > 0 ? String.fromCharCode(97 + sameDay.length) : '';
-    return prefix + seq;
-  };
-
-  const addRow = () => {
-    setCages([...cages, { cageNo: cages.length + 1, birdCount: 0, weight: 0, sellingRate: 0, isBilled: false }]);
-  };
-
-  const updateCell = (i: number, field: keyof Omit<Cage, 'id' | 'dcId'>, val: number) => {
-    const updated = cages.map((c, idx) => idx === i ? { ...c, [field]: val } : c);
+  const updateCage = (index: number, field: keyof Omit<Cage, 'id' | 'dcId'>, value: number) => {
+    const updated = cages.map((c, i) => (i === index ? { ...c, [field]: value } : c));
     setCages(updated);
   };
 
-  const removeRow = (i: number) => {
-    setCages(cages.filter((_, idx) => idx !== i));
-  };
-
-  const calcTotals = () => ({
-    birds: cages.reduce((a, c) => a + c.birdCount, 0),
-    weight: cages.reduce((a, c) => a + c.weight, 0)
-  });
-
-  const resetForm = () => {
-    setSelectedVendor(null);
-    setVendorSearch('');
-    setPurchaseRate(0);
-    setSelectedDate(new Date().toISOString().split('T')[0]);
-    setCages([]);
-    setIsEditing(false);
-    setEditingId(null);
-  };
-
   const parseBulkData = () => {
-    if (!bulkData.trim()) {
-      alert("Please paste some data first");
-      return;
-    }
-
+    if (!bulkData.trim()) return;
     const lines = bulkData.trim().split('\n');
     const parsed: Omit<Cage, 'id' | 'dcId'>[] = [];
-
     lines.forEach(line => {
       const parts = line.trim().split(/\s+/);
       if (parts.length >= 3) {
         parsed.push({
-          cageNo: cages.length + parsed.length + 1,
+          cageNo: parseInt(parts[0]),
           birdCount: parseInt(parts[1]),
           weight: parseFloat(parts[2]),
           sellingRate: parts[3] ? parseFloat(parts[3]) : 0,
@@ -136,264 +104,242 @@ export default function DC() {
         });
       }
     });
+    setCages(parsed);
+    setBulkData('');
+  };
 
-    if (parsed.length > 0) {
-      setCages(prev => [...prev, ...parsed]);
-      setShowForm(true);  // ensure form is open
-      setShowBulkInput(false);
-      setBulkData('');
-    } else {
-      alert('No valid cage data found!');
-    }
+  const calculateTotals = () => {
+    const birds = cages.reduce((a, c) => a + c.birdCount, 0);
+    const weight = cages.reduce((a, c) => a + c.weight, 0);
+    return { birds, weight };
   };
 
   const saveDC = async () => {
-    if (!selectedVendor) return alert('Vendor required');
-    if (purchaseRate <= 0) return alert('Rate required');
-    if (!selectedDate) return alert('Date required');
-    if (cages.length === 0) return alert('Add at least one row');
-    if (cages.some(c => c.birdCount <= 0 || c.weight <= 0)) return alert('All rows need valid values');
+    if (!selectedVendor || cages.length === 0 || purchaseRate <= 0) {
+      alert('Fill vendor, cages, and rate');
+      return;
+    }
+    const { birds, weight } = calculateTotals();
+    const amount = weight * purchaseRate;
 
-    const { birds, weight } = calcTotals();
-    const dcNumber = generateDCNumber();
+    // ask how much paid to vendor
+    const paidStr = prompt(
+      `Previous due for ${selectedVendor.name}: ₹${previousDue}\nCurrent DC Amount: ₹${amount}\nHow much did you pay to vendor now?`,
+      '0'
+    );
+    const paid = parseFloat(paidStr || '0');
+    const newDue = previousDue + amount - paid;
 
-    const dcData: DeliveryChallan = {
-      id: editingId || `dc_${Date.now()}`,
+    const dcNumber = `${selectedDate.replace(/-/g, '')}_${selectedVendor.name
+      .split(' ')[0]
+      .toLowerCase()}`;
+
+    const dcData = {
       dcNumber,
       date: new Date(selectedDate),
       vendorName: selectedVendor.name,
       purchaseRate,
-      cages: cages.map(c => ({ ...c, id: `c_${Math.random()}`, dcId: '' })),
+      cages: cages.map(c => ({
+        ...c,
+        id: `cage_${Date.now()}_${Math.random()}`,
+        dcId: ''
+      })),
       totalBirds: birds,
       totalWeight: weight,
-      manualWeighing: false,
+      manualWeighing,
       confirmed: false
     };
 
-    if (isEditing && editingId) {
-      await dataService.updateDeliveryChallan(editingId, dcData);
-    } else {
-      await dataService.createDeliveryChallan(dcData);
-    }
+    await dataService.createDeliveryChallan(dcData);
 
-    if (dataService.addLedgerEntry) {
-      await dataService.addLedgerEntry({
-        date: selectedDate,
-        vendorName: selectedVendor.name,
-        rate: purchaseRate,
-        totalBirds: birds,
-        totalWeight: weight,
-        dcNumber
-      });
-    }
+    // also update ledger
+    await dataService.addLedgerEntry({
+      id: `led_${Date.now()}`,
+      date: selectedDate,
+      type: 'DC',
+      name: selectedVendor.name,
+      rate: purchaseRate,
+      amount,
+      paid,
+      due: newDue,
+      paidMode: 'Cash'
+    });
 
-    await loadData();
-    resetForm();
+    alert(`DC Saved! New due for ${selectedVendor.name}: ₹${newDue}`);
+    loadData();
     setShowForm(false);
-    alert('✅ Saved successfully!');
-  };
-  const editDC = (dc: DeliveryChallan) => {
-    setSelectedDate(new Date(dc.date).toISOString().split('T')[0]);
-    setSelectedVendor({ name: dc.vendorName, code: dc.dcNumber.replace(/^\d{1,2}-\d{1,2}-\d{2}/, '') });
-    setVendorSearch(dc.vendorName);
-    setPurchaseRate(dc.purchaseRate);
-    setCages(dc.cages.map(c => ({
-      cageNo: c.cageNo,
-      birdCount: c.birdCount,
-      weight: c.weight,
-      sellingRate: c.sellingRate,
-      isBilled: c.isBilled
-    })));
-    setIsEditing(true);
-    setEditingId(dc.id);
-    setShowForm(true);
   };
 
-  const deleteDC = async (id: string) => {
-    if (confirm('Delete this DC?')) {
-      await dataService.deleteDeliveryChallan(id);
-      await loadData();
-    }
-  };
-
-  const confirmDC = async (id: string) => {
-    await dataService.updateDeliveryChallan(id, { confirmed: true });
-    await loadData();
-  };
-
-  const { birds, weight } = calcTotals();
+  const { birds, weight } = calculateTotals();
 
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="p-3 rounded-xl bg-gradient-to-r from-blue-500 to-cyan-500 shadow-lg">
-            <Truck className="w-6 h-6 text-white" />
-          </div>
-          <div>
-            <h1 className="text-2xl font-bold text-white">Delivery Challan</h1>
-            <p className="text-gray-400">Manage incoming poultry deliveries</p>
-          </div>
-        </div>
-        <div className="flex gap-3">
-          <button
-            onClick={() => {
-              resetForm();
-              setShowForm(true);
-              setShowBulkInput(true);
-            }}
-            className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-orange-500 to-red-500 rounded-xl text-white font-medium shadow-[0_0_15px_rgba(255,165,0,0.3)]"
-          >
-            Bulk Import
-          </button>
-          <button
-            onClick={() => { resetForm(); setShowForm(true); }}
-            className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-pink-500 via-purple-500 to-cyan-500 rounded-xl text-white font-medium shadow-[0_0_20px_rgba(255,0,128,0.3)]"
-          >
-            <Plus className="w-5 h-5" /> New DC
-          </button>
-        </div>
+      <div className="flex justify-between items-center">
+        <h1 className="text-xl font-bold text-white flex items-center gap-2">
+          <Truck /> Delivery Challan
+        </h1>
+        <button
+          onClick={() => {
+            setCages([]);
+            setShowForm(true);
+          }}
+          className="px-4 py-2 bg-gradient-to-r from-pink-500 to-purple-500 rounded-xl text-white font-medium"
+        >
+          <Plus className="inline-block mr-1" /> New DC
+        </button>
       </div>
 
-      {/* Bulk Import Modal */}
-      {showBulkInput && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-          <div className="bg-[#2a2a2a] rounded-2xl p-6 w-full max-w-2xl shadow-lg">
-            <h3 className="text-xl font-semibold text-white mb-4">Bulk Import DC Data</h3>
+      {showForm && (
+        <div className="bg-[#2a2a2a] p-4 rounded-xl space-y-4">
+          <div>
+            <label className="text-white block mb-1">Date</label>
+            <input
+              type="date"
+              value={selectedDate}
+              onChange={e => setSelectedDate(e.target.value)}
+              className="p-2 rounded bg-black text-white"
+            />
+          </div>
+
+          <div>
+            <label className="text-white block mb-1">Vendor</label>
+            <input
+              type="text"
+              value={vendorSearch}
+              onChange={e => setVendorSearch(e.target.value)}
+              className="p-2 rounded bg-black text-white mb-2"
+              placeholder="Search vendor…"
+            />
+            <div className="space-y-1">
+              {filteredVendors.map(v => (
+                <div
+                  key={v.name}
+                  onClick={() => selectVendor(v)}
+                  className={`p-2 rounded cursor-pointer ${
+                    selectedVendor?.name === v.name
+                      ? 'bg-purple-600 text-white'
+                      : 'bg-[#1a1a1a] text-gray-300'
+                  }`}
+                >
+                  {v.name}
+                </div>
+              ))}
+            </div>
+            {selectedVendor && (
+              <div className="text-green-400 mt-2">
+                Selected: {selectedVendor.name} | Previous Due: ₹{previousDue}
+              </div>
+            )}
+          </div>
+
+          <div>
+            <label className="text-white block mb-1">Purchase Rate (₹/kg)</label>
+            <input
+              type="number"
+              value={purchaseRate}
+              onChange={e => setPurchaseRate(parseFloat(e.target.value))}
+              className="p-2 rounded bg-black text-white"
+            />
+          </div>
+
+          {/* Bulk Paste */}
+          <div>
+            <label className="text-white block mb-1">Paste bulk cages</label>
             <textarea
               value={bulkData}
-              onChange={(e) => setBulkData(e.target.value)}
-              placeholder={`CageNo BirdCount Weight [Rate]\n1 50 45.5\n2 48 42.3`}
-              className="w-full h-64 px-3 py-2 bg-[#1a1a1a] border border-gray-600 rounded-lg text-white font-mono text-sm"
-            />
-            <div className="flex gap-3 mt-4">
-              <button onClick={parseBulkData} className="px-4 py-2 bg-green-500 text-white rounded">Import</button>
-              <button onClick={() => setShowBulkInput(false)} className="px-4 py-2 bg-gray-500 text-white rounded">Cancel</button>
-            </div>
+              onChange={e => setBulkData(e.target.value)}
+              placeholder="CageNo BirdCount Weight [Rate]"
+              className="w-full p-2 rounded bg-black text-white"
+            ></textarea>
+            <button
+              onClick={parseBulkData}
+              className="mt-2 px-3 py-1 bg-blue-600 rounded text-white"
+            >
+              Import
+            </button>
           </div>
-        </div>
-      )}
 
-      {/* DC Form */}
-      {showForm && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-          <div className="bg-[#2a2a2a] rounded-2xl p-6 w-full max-w-4xl max-h-[90vh] overflow-y-auto">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-              <div>
-                <label className="text-white text-sm">Date</label>
-                <input type="date" value={selectedDate} onChange={e => setSelectedDate(e.target.value)} className="w-full p-2 rounded bg-[#0f0f0f] text-white" />
-              </div>
-              <div>
-                <label className="text-white text-sm">Vendor</label>
+          {/* Cages Table */}
+          <div className="space-y-2">
+            {cages.map((cage, i) => (
+              <div key={i} className="grid grid-cols-4 gap-2 items-center">
                 <input
-                  type="text"
-                  value={vendorSearch}
-                  onChange={e => setVendorSearch(e.target.value)}
-                  placeholder="Search or add vendor..."
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' && vendorSearch.trim()) {
-                      const newVendor: Vendor = { name: vendorSearch.trim(), code: vendorSearch.trim().slice(0,3).toLowerCase() };
-                      selectVendor(newVendor);
-                    }
-                  }}
-                  className="w-full p-2 rounded bg-[#0f0f0f] text-white"
+                  type="number"
+                  value={cage.cageNo}
+                  onChange={e => updateCage(i, 'cageNo', parseInt(e.target.value))}
+                  className="p-2 rounded bg-black text-white"
                 />
-                <div className="max-h-24 overflow-y-auto mt-1">
-                  {filteredVendors.map(v => (
-                    <button key={v.name} onClick={() => selectVendor(v)} className={`block w-full text-left p-1 rounded ${selectedVendor?.name === v.name ? 'bg-purple-500/30' : 'hover:bg-[#3a3a3a]'}`}>{v.name}</button>
-                  ))}
-                </div>
-                {vendorSearch && !filteredVendors.find(v => v.name.toLowerCase() === vendorSearch.toLowerCase()) && (
-                  <button onClick={() => {
-                    const newVendor: Vendor = { name: vendorSearch.trim(), code: vendorSearch.trim().slice(0,3).toLowerCase() };
-                    selectVendor(newVendor);
-                  }} className="mt-2 px-3 py-1 bg-green-500/30 text-green-200 rounded hover:bg-green-500/50">
-                    + Add "{vendorSearch}"
-                  </button>
-                )}
+                <input
+                  type="number"
+                  value={cage.birdCount}
+                  onChange={e => updateCage(i, 'birdCount', parseInt(e.target.value))}
+                  className="p-2 rounded bg-black text-white"
+                />
+                <input
+                  type="number"
+                  value={cage.weight}
+                  onChange={e => updateCage(i, 'weight', parseFloat(e.target.value))}
+                  className="p-2 rounded bg-black text-white"
+                />
+                <button
+                  onClick={() => {
+                    setCages(cages.filter((_, idx) => idx !== i));
+                  }}
+                  className="px-3 py-1 bg-red-600 rounded text-white"
+                >
+                  <Trash2 className="inline-block" />
+                </button>
               </div>
-              <div>
-                <label className="text-white text-sm">Purchase Rate</label>
-                <input type="number" value={purchaseRate} onChange={e => setPurchaseRate(parseFloat(e.target.value))} className="w-full p-2 rounded bg-[#0f0f0f] text-white" />
-              </div>
-            </div>
-
-            <div className="text-green-400 font-mono mb-4">{generateDCNumber()}</div>
-
-            <table className="w-full text-white">
-              <thead>
-                <tr className="bg-[#1a1a1a]">
-                  <th className="p-2">Cage No</th>
-                  <th className="p-2">Bird Count</th>
-                  <th className="p-2">Weight</th>
-                  <th className="p-2"></th>
-                </tr>
-              </thead>
-              <tbody>
-                {cages.map((c, i) => (
-                  <tr key={i} className="bg-[#0f0f0f]">
-                    <td className="p-2">{c.cageNo}</td>
-                    <td className="p-2"><input type="number" value={c.birdCount} onChange={e => updateCell(i, 'birdCount', parseInt(e.target.value) || 0)} className="w-full p-1 rounded bg-[#2a2a2a] text-white" /></td>
-                    <td className="p-2"><input type="number" value={c.weight} onChange={e => updateCell(i, 'weight', parseFloat(e.target.value) || 0)} className="w-full p-1 rounded bg-[#2a2a2a] text-white" /></td>
-                    <td className="p-2"><button onClick={() => removeRow(i)} className="text-red-400"><Trash2 className="w-4 h-4" /></button></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            <button onClick={addRow} className="mt-3 px-3 py-1 bg-blue-500/20 text-blue-400 rounded-lg hover:bg-blue-500/30">+ Add Row</button>
-
-            <div className="mt-4 text-white">
-              Total Birds: {birds} | Total Weight: {weight.toFixed(1)} kg
-            </div>
-
-            <div className="mt-4 flex gap-3">
-              <button onClick={saveDC} className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-green-500 to-emerald-500 rounded-xl text-white">
-                <Save className="w-5 h-5" /> {isEditing ? 'Update DC' : 'Save DC'}
-              </button>
-              <button onClick={() => setShowForm(false)} className="px-6 py-3 bg-gray-600 rounded-xl text-white">Cancel</button>
-            </div>
+            ))}
           </div>
+          <button
+            onClick={addCage}
+            className="mt-2 px-3 py-1 bg-green-600 rounded text-white"
+          >
+            + Add Row
+          </button>
+
+          <div className="text-white mt-4">
+            Total Birds: {birds} | Total Weight: {weight.toFixed(1)} kg
+          </div>
+
+          <button
+            onClick={saveDC}
+            className="mt-4 px-4 py-2 bg-purple-600 rounded text-white"
+          >
+            <Save className="inline-block mr-1" /> Save DC
+          </button>
         </div>
       )}
 
-      {/* DC list */}
-      <div className="bg-[#2a2a2a] rounded-2xl overflow-hidden">
-        <div className="p-4 border-b border-gray-700 text-white font-semibold">Last 30 Delivery Challans</div>
+      {/* List */}
+      <div className="mt-6">
         <table className="w-full text-white">
-          <thead className="bg-[#1a1a1a]">
-            <tr>
+          <thead>
+            <tr className="bg-[#1a1a1a]">
               <th className="p-2">DC Number</th>
               <th className="p-2">Date</th>
               <th className="p-2">Vendor</th>
               <th className="p-2">Birds</th>
               <th className="p-2">Weight</th>
               <th className="p-2">Rate</th>
-              <th className="p-2">Actions</th>
             </tr>
           </thead>
           <tbody>
             {deliveryChallans.map((dc, idx) => (
-              <motion.tr key={dc.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: idx * 0.05 }}>
+              <motion.tr
+                key={dc.id}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: idx * 0.05 }}
+              >
                 <td className="p-2">{dc.dcNumber}</td>
                 <td className="p-2">{new Date(dc.date).toLocaleDateString()}</td>
                 <td className="p-2">{dc.vendorName}</td>
                 <td className="p-2">{dc.totalBirds}</td>
                 <td className="p-2">{dc.totalWeight.toFixed(1)} kg</td>
                 <td className="p-2">₹{dc.purchaseRate}</td>
-                <td className="p-2 flex gap-2">
-                  {!dc.confirmed && (
-                    <button onClick={() => confirmDC(dc.id)} className="p-1 bg-green-500/20 rounded hover:bg-green-500/40">
-                      <CheckCircle className="w-4 h-4 text-green-400" />
-                    </button>
-                  )}
-                  <button onClick={() => editDC(dc)} className="p-1 bg-blue-500/20 rounded hover:bg-blue-500/40">
-                    <Edit className="w-4 h-4 text-blue-400" />
-                  </button>
-                  <button onClick={() => deleteDC(dc.id)} className="p-1 bg-red-500/20 rounded hover:bg-red-500/40">
-                    <Trash2 className="w-4 h-4 text-red-400" />
-                  </button>
-                </td>
               </motion.tr>
             ))}
           </tbody>
