@@ -120,15 +120,7 @@ export default function DC() {
       return;
     }
     const { birds, weight } = calculateTotals();
-    const amount = weight * purchaseRate;
-
-    // ask how much paid to vendor
-    const paidStr = prompt(
-      `Previous due for ${selectedVendor.name}: ₹${previousDue}\nCurrent DC Amount: ₹${amount}\nHow much did you pay to vendor now?`,
-      '0'
-    );
-    const paid = parseFloat(paidStr || '0');
-    const newDue = previousDue + amount - paid;
+    const totalAmount = weight * purchaseRate;
 
     const dcNumber = `${selectedDate.replace(/-/g, '')}_${selectedVendor.name
       .split(' ')[0]
@@ -150,44 +142,32 @@ export default function DC() {
       confirmed: false
     };
 
-    await dataService.createDeliveryChallan(dcData);
+    const savedDC = await dataService.createDeliveryChallan(dcData);
 
-    // also update ledger
-    await dataService.addLedgerEntry({
-      id: `led_${Date.now()}`,
-      const savedDC = await dataService.createDeliveryChallan(dcData);
-      type: 'DC',
+    // Ask how much paid to vendor
+    const paidStr = window.prompt(
+      `Vendor "${selectedVendor.name}"\nTotal Amount: ₹${totalAmount.toFixed(2)}\nHow much did you pay to vendor now?`,
+      "0"
+    );
+    const paid = paidStr ? parseFloat(paidStr) : 0;
+    const due = totalAmount - paid;
 
-      // Ask how much paid to vendor
-      const paidStr = window.prompt(
-        `Vendor "${selectedVendor.name}"\nTotal Amount: ₹${totalAmount.toFixed(2)}\nHow much did you pay to vendor now?`,
-        "0"
-      );
-      const paid = paidStr ? parseFloat(paidStr) : 0;
-      const due = totalAmount - paid;
+    // Create ledger entry
+    console.log('📝 Creating ledger entry...');
+    await dataService.createLedgerEntry({
+      customerId: selectedVendor.name,
+      customerName: selectedVendor.name,
+      type: 'purchase',
+      amount: totalAmount,
+      balance: due,
+      description: `DC ${dcData.dcNumber} - ${birds} birds, ${weight.toFixed(1)}kg @ ₹${purchaseRate}/kg`,
+      referenceId: savedDC.id,
+      date: new Date(selectedDate)
+    });
+    console.log('✅ Ledger entry created');
 
-      // Create ledger entry
-      console.log('📝 Creating ledger entry...');
-      await dataService.createLedgerEntry({
-        customerId: selectedVendor.name,
-        customerName: selectedVendor.name,
-        type: 'purchase',
-        amount: totalAmount,
-        balance: due,
-        description: `DC ${dcData.dcNumber} - ${birds} birds, ${weight.toFixed(1)}kg @ ₹${purchaseRate}/kg`,
-        referenceId: savedDC.id,
-        date: new Date(selectedDate)
-      });
-      console.log('✅ Ledger entry created');
-      name: selectedVendor.name,
-      rate: purchaseRate,
-      amount,
-      paid,
-      due: newDue,
-      paidMode: 'Cash'
-      alert(`DC saved successfully!\nTotal: ₹${totalAmount.toFixed(2)}\nPaid: ₹${paid.toFixed(2)}\nDue: ₹${due.toFixed(2)}`);
+    alert(`DC saved successfully!\nTotal: ₹${totalAmount.toFixed(2)}\nPaid: ₹${paid.toFixed(2)}\nDue: ₹${due.toFixed(2)}`);
 
-    alert(`DC Saved! New due for ${selectedVendor.name}: ₹${newDue}`);
     loadData();
     setShowForm(false);
   };
