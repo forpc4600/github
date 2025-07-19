@@ -125,14 +125,14 @@ export default function Invoices() {
             <Calendar className="w-5 h-5 text-blue-400" />
             <h3 className="text-gray-400 text-sm font-medium">Pending</h3>
           </div>
-          <p className="text-3xl font-bold text-blue-400">${pendingAmount.toLocaleString()}</p>
+          <p className="text-3xl font-bold text-blue-400">₹{pendingAmount.toLocaleString()}</p>
         </div>
         <div className="bg-[#2a2a2a] rounded-2xl p-6 shadow-[8px_8px_16px_#0f0f0f,-8px_-8px_16px_#3a3a3a]">
           <div className="flex items-center gap-3 mb-2">
             <Calendar className="w-5 h-5 text-red-400" />
             <h3 className="text-gray-400 text-sm font-medium">Overdue</h3>
           </div>
-          <p className="text-3xl font-bold text-red-400">${overdueAmount.toLocaleString()}</p>
+          <p className="text-3xl font-bold text-red-400">₹{overdueAmount.toLocaleString()}</p>
         </div>
       </div>
 
@@ -171,8 +171,8 @@ export default function Invoices() {
                     <p className="text-gray-400 text-sm">{invoice.items.length} item(s)</p>
                   </td>
                   <td className="px-6 py-4">
-                    <p className="text-white font-medium">${invoice.total.toFixed(2)}</p>
-                    <p className="text-gray-400 text-sm">Tax: ${invoice.tax.toFixed(2)}</p>
+                    <p className="text-white font-medium">₹{invoice.total.toFixed(2)}</p>
+                    <p className="text-gray-400 text-sm">Tax: ₹{invoice.tax.toFixed(2)}</p>
                   </td>
                   <td className="px-6 py-4">
                     <span className={`px-3 py-1 rounded-full text-xs font-medium border ${getStatusColor(invoice.status)}`}>

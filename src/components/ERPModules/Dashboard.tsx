@@ -21,7 +21,7 @@ export default function Dashboard() {
   const dashboardCards = [
     {
       title: 'Total Revenue',
-      value: `$${totalRevenue.toLocaleString()}`,
+      value: `₹${totalRevenue.toLocaleString()}`,
       change: '+12.5%',
       icon: <DollarSign className="w-6 h-6" />,
       gradient: 'from-pink-500 via-purple-500 to-indigo-500'
@@ -53,16 +53,16 @@ export default function Dashboard() {
     { action: 'New invoice created', details: 'INV-003 for $2,450', time: '2 hours ago', type: 'invoice' },
     { action: 'Customer added', details: 'New Enterprise Solutions LLC', time: '4 hours ago', type: 'customer' },
     { action: 'Low stock alert', details: 'Enterprise Hardware Kit (5 remaining)', time: '6 hours ago', type: 'alert' },
-    { action: 'Payment received', details: '$1,649.94 from Acme Corporation', time: '1 day ago', type: 'payment' }
+    { action: 'Payment received', details: '₹1,47,494 from Acme Corporation', time: '1 day ago', type: 'payment' }
   ];
 
   const chartData = [
-    { month: 'Jan', value: 4500 },
-    { month: 'Feb', value: 6200 },
-    { month: 'Mar', value: 5800 },
-    { month: 'Apr', value: 7200 },
-    { month: 'May', value: 6900 },
-    { month: 'Jun', value: 8100 }
+    { month: 'Jan', value: 375000 },
+    { month: 'Feb', value: 516600 },
+    { month: 'Mar', value: 483300 },
+    { month: 'Apr', value: 600000 },
+    { month: 'May', value: 575000 },
+    { month: 'Jun', value: 675000 }
   ];
 
   return (
@@ -126,7 +126,7 @@ export default function Dashboard() {
                 <div key={item.month} className="flex flex-col items-center flex-1">
                   <motion.div
                     initial={{ height: 0 }}
-                    animate={{ height: `${(item.value / 8100) * 100}%` }}
+                    animate={{ height: `${(item.value / 675000) * 100}%` }}
                     transition={{ delay: index * 0.1, duration: 0.8 }}
                     className={`w-full rounded-t-lg bg-gradient-to-t ${
                       index % 4 === 0 ? 'from-pink-500 to-purple-500' :

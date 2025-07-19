@@ -180,7 +180,7 @@ export default function Products() {
                     </span>
                   </td>
                   <td className="px-6 py-4">
-                    <p className="text-white font-medium">${product.price.toFixed(2)}</p>
+                    <p className="text-white font-medium">₹{product.price.toFixed(2)}</p>
                   </td>
                   <td className="px-6 py-4">
                     <div>
