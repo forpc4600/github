@@ -124,7 +124,6 @@ export default function DC() {
 
     // ask how much paid to vendor
     const paidStr = prompt(
-      const totalAmount = weight * purchaseRate;
       `Previous due for ${selectedVendor.name}: ₹${previousDue}\nCurrent DC Amount: ₹${amount}\nHow much did you pay to vendor now?`,
       '0'
     );
