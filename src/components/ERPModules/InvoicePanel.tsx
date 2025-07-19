@@ -10,7 +10,7 @@ import {
   Calculator,
   User,
   Calendar,
-  DollarSign,
+  IndianRupee,
   AlertTriangle
 } from 'lucide-react';
 import { dataService } from '../../services/dataService';

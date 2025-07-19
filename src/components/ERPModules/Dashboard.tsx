@@ -4,7 +4,7 @@ import {
   Users, 
   Package, 
   FileText, 
-  DollarSign,
+  IndianRupee,
   ShoppingCart,
   AlertTriangle,
   Calendar
@@ -23,7 +23,7 @@ export default function Dashboard() {
       title: 'Total Revenue',
       value: `₹${totalRevenue.toLocaleString()}`,
       change: '+12.5%',
-      icon: <DollarSign className="w-6 h-6" />,
+      icon: <IndianRupee className="w-6 h-6" />,
       gradient: 'from-pink-500 via-purple-500 to-indigo-500'
     },
     {
@@ -164,7 +164,7 @@ export default function Dashboard() {
                   {activity.type === 'invoice' && <FileText className="w-4 h-4" />}
                   {activity.type === 'customer' && <Users className="w-4 h-4" />}
                   {activity.type === 'alert' && <AlertTriangle className="w-4 h-4" />}
-                  {activity.type === 'payment' && <DollarSign className="w-4 h-4" />}
+                  {activity.type === 'payment' && <IndianRupee className="w-4 h-4" />}
                 </div>
                 <div className="flex-1">
                   <p className="text-white text-sm font-medium">{activity.action}</p>

@@ -10,7 +10,7 @@ import {
   Download,
   Filter,
   Calendar,
-  DollarSign
+  IndianRupee
 } from 'lucide-react';
 import { mockInvoices } from '../../data/mockData';
 import { Invoice } from '../../types/erp';
@@ -115,10 +115,10 @@ export default function Invoices() {
         </div>
         <div className="bg-[#2a2a2a] rounded-2xl p-6 shadow-[8px_8px_16px_#0f0f0f,-8px_-8px_16px_#3a3a3a]">
           <div className="flex items-center gap-3 mb-2">
-            <DollarSign className="w-5 h-5 text-green-400" />
+            <IndianRupee className="w-5 h-5 text-green-400" />
             <h3 className="text-gray-400 text-sm font-medium">Total Revenue</h3>
           </div>
-          <p className="text-3xl font-bold text-green-400">${totalRevenue.toLocaleString()}</p>
+          <p className="text-3xl font-bold text-green-400">₹{totalRevenue.toLocaleString()}</p>
         </div>
         <div className="bg-[#2a2a2a] rounded-2xl p-6 shadow-[8px_8px_16px_#0f0f0f,-8px_-8px_16px_#3a3a3a]">
           <div className="flex items-center gap-3 mb-2">
