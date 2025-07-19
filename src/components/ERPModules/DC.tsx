@@ -357,5 +357,90 @@ export default function DC() {
               + Add Row
             </button>
 
-            {/* Totals */}
-            <div className
+                      {/* Totals */}
+            <div className="mt-4 text-white">
+              Total Birds: {birds} | Total Weight: {weight.toFixed(1)} kg
+            </div>
+
+            {/* Actions */}
+            <div className="mt-4 flex gap-3">
+              <button
+                onClick={saveDC}
+                className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-green-500 to-emerald-500 rounded-xl text-white"
+              >
+                <Save className="w-5 h-5" /> {isEditing ? 'Update DC' : 'Save DC'}
+              </button>
+              <button
+                onClick={() => setShowForm(false)}
+                className="px-6 py-3 bg-gray-600 rounded-xl text-white"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* DC list */}
+      <div className="bg-[#2a2a2a] rounded-2xl overflow-hidden">
+        <div className="p-4 border-b border-gray-700 text-white font-semibold">
+          Last 30 Delivery Challans
+        </div>
+        <table className="w-full text-white">
+          <thead className="bg-[#1a1a1a]">
+            <tr>
+              <th className="p-2">DC Number</th>
+              <th className="p-2">Date</th>
+              <th className="p-2">Vendor</th>
+              <th className="p-2">Birds</th>
+              <th className="p-2">Weight</th>
+              <th className="p-2">Rate</th>
+              <th className="p-2">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {deliveryChallans.map((dc, idx) => (
+              <motion.tr
+                key={dc.id}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: idx * 0.05 }}
+                className="hover:bg-[#1a1a1a]"
+              >
+                <td className="p-2">{dc.dcNumber}</td>
+                <td className="p-2">{new Date(dc.date).toLocaleDateString()}</td>
+                <td className="p-2">{dc.vendorName}</td>
+                <td className="p-2">{dc.totalBirds}</td>
+                <td className="p-2">{dc.totalWeight.toFixed(1)} kg</td>
+                <td className="p-2">₹{dc.purchaseRate}</td>
+                <td className="p-2 flex gap-2">
+                  {!dc.confirmed && (
+                    <button
+                      onClick={() => confirmDC(dc.id)}
+                      className="p-1 bg-green-500/20 rounded hover:bg-green-500/40"
+                    >
+                      <CheckCircle className="w-4 h-4 text-green-400" />
+                    </button>
+                  )}
+                  <button
+                    onClick={() => editDC(dc)}
+                    className="p-1 bg-blue-500/20 rounded hover:bg-blue-500/40"
+                  >
+                    <Edit className="w-4 h-4 text-blue-400" />
+                  </button>
+                  <button
+                    onClick={() => deleteDC(dc.id)}
+                    className="p-1 bg-red-500/20 rounded hover:bg-red-500/40"
+                  >
+                    <Trash2 className="w-4 h-4 text-red-400" />
+                  </button>
+                </td>
+              </motion.tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
